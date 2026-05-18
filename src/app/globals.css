@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0f;
+  --surface: #12121a;
+  --surface-2: #1a1a25;
+  --border: #26262f;
+  --foreground: #f0f0f5;
+  --muted: #8a8a99;
+  --accent: #8b5cf6;
+  --accent-2: #6366f1;
+  --success: #10b981;
+  --danger: #f43f5e;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --background: #f7f7fb;
+    --surface: #ffffff;
+    --surface-2: #f0f0f5;
+    --border: #e4e4ec;
+    --foreground: #0a0a0f;
+    --muted: #6a6a78;
+  }
+}
+
+html, body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(900px circle at 10% 0%, rgba(139, 92, 246, 0.14), transparent 50%),
+    radial-gradient(700px circle at 90% 100%, rgba(99, 102, 241, 0.12), transparent 50%),
+    radial-gradient(500px circle at 50% 50%, rgba(236, 72, 153, 0.05), transparent 50%);
+  animation: bg-drift 24s ease-in-out infinite alternate;
+}
+
+@keyframes bg-drift {
+  0%   { background-position: 0% 0%, 100% 100%, 50% 50%; }
+  50%  { background-position: 5% 10%, 95% 90%, 55% 45%; }
+  100% { background-position: 10% 5%, 90% 95%, 45% 55%; }
+}
+
+.glass {
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+}
+
+.scroll-hidden::-webkit-scrollbar { display: none; }
+.scroll-hidden { scrollbar-width: none; }
+
+input, textarea, button {
+  font: inherit;
+  color: inherit;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.9); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.pop { animation: pop 180ms ease-out; }
+
+@keyframes slide-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.slide-up { animation: slide-up 240ms ease-out; }
