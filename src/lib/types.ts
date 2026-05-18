@@ -23,6 +23,8 @@ export type Todo = {
   priority?: Priority;
   order?: number;
   recurringId?: string;
+  time?: string;
+  durationMinutes?: number;
   createdAt: string;
   completedAt?: string;
 };
@@ -40,6 +42,7 @@ export type CalEvent = {
   title: string;
   date: string;
   time?: string;
+  durationMinutes?: number;
   goalId?: string;
   color?: string;
 };

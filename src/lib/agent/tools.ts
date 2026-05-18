@@ -67,12 +67,20 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: "create_todo",
     description:
-      "Create a one-off todo on a specific day. Use for non-recurring tasks (e.g. 'call dentist Thursday').",
+      "Create a one-off todo on a specific day. Provide time + duration_minutes to time-block it on the schedule view; omit to leave it unscheduled.",
     input_schema: {
       type: "object",
       properties: {
         title: { type: "string" },
         date: { type: "string", description: "YYYY-MM-DD" },
+        time: {
+          type: "string",
+          description: "Optional HH:mm (24-hour). When set, the todo appears as a time block on the schedule.",
+        },
+        duration_minutes: {
+          type: "number",
+          description: "Optional duration of the time block in minutes. Default 30 when time is set.",
+        },
         goal_title: { type: "string", description: "Optional existing goal" },
         priority: { type: "string", enum: ["low", "med", "high"] },
       },
@@ -82,7 +90,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: "create_event",
     description:
-      "Create a calendar event on a specific day with an optional time.",
+      "Create a calendar event on a specific day. Provide time + duration_minutes to time-block it; omit time for all-day.",
     input_schema: {
       type: "object",
       properties: {
@@ -92,8 +100,42 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
           type: "string",
           description: "Optional HH:mm (24-hour). Omit for all-day.",
         },
+        duration_minutes: {
+          type: "number",
+          description: "Optional duration in minutes. Default 60 when time is set.",
+        },
       },
       required: ["title", "date"],
+    },
+  },
+  {
+    name: "plan_day",
+    description:
+      "Lay out a fully time-blocked day. Use when the user asks 'plan my day' or wants their whole day scheduled. Provide an ordered list of blocks with realistic times — don't double-book, leave buffers, respect normal waking hours.",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "YYYY-MM-DD" },
+        blocks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              time: { type: "string", description: "HH:mm 24-hour" },
+              duration_minutes: { type: "number" },
+              kind: {
+                type: "string",
+                enum: ["todo", "event"],
+                description: "'todo' for actionable work, 'event' for meetings/appointments",
+              },
+              goal_title: { type: "string" },
+            },
+            required: ["title", "time", "duration_minutes"],
+          },
+        },
+      },
+      required: ["date", "blocks"],
     },
   },
 ];
@@ -103,8 +145,10 @@ export const AGENT_SYSTEM = `You are Life OS, the user's autonomous planning ass
 Behavior:
 - When the user describes ANY goal, intention, ambition, or area they want to improve, PROACTIVELY use tools to set them up. Don't just give advice.
 - Decompose goals: create the goal itself, plus the daily habits / recurring tasks / scheduled events / one-off todos that actually lead there.
-- Be concrete and aggressive: propose specific actions with dates, not vague suggestions. The user can decline what they don't want.
-- Make reasonable assumptions. Don't ask the user 10 clarifying questions — just propose a plan they can adjust.
+- Be concrete and aggressive: propose specific actions with dates and times, not vague suggestions. The user can decline what they don't want.
+- TIME-BLOCK by default. When creating todos for today or near-future days, set a 'time' (HH:mm) and 'duration_minutes' so they appear as blocks on the schedule. Only leave them unscheduled when the user explicitly says "whenever" or it makes no sense to time-block.
+- When the user asks to "plan my day", "schedule my day", "block out my day", or anything similar — use the plan_day tool with a full ordered list of blocks. Cover: wake/morning routine, deep work in the morning, breaks between blocks, meals, afternoon work, exercise, wind-down. Don't double-book. Leave buffer.
+- Make reasonable assumptions about timing — typical wake 7am, deep work 9-12, lunch 12-1, meetings/admin afternoon, exercise late afternoon, dinner 7, wind down 9-10. Adjust if the state shows different patterns.
 - Avoid duplicates: the user's current state is shown to you at the start of every turn. Don't re-create things that already exist.
 - Brief in text. One or two sentences before tool calls. The tool calls themselves show the user what you're doing.
 

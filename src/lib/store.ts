@@ -51,6 +51,7 @@ type Actions = {
   upsertNote: (date: string, content: string) => void;
   deleteNote: (id: string) => void;
   addEvent: (e: Partial<CalEvent> & { title: string; date: string }) => void;
+  updateEvent: (id: string, patch: Partial<CalEvent>) => void;
   deleteEvent: (id: string) => void;
   addRule: (r: Omit<RecurringRule, "id" | "archived">) => void;
   deleteRule: (id: string) => void;
@@ -136,6 +137,8 @@ export const useStore = create<State & Actions>()(
                 priority: t.priority,
                 order,
                 recurringId: t.recurringId,
+                time: t.time,
+                durationMinutes: t.durationMinutes,
                 createdAt: new Date().toISOString(),
               },
             ],
@@ -218,10 +221,16 @@ export const useStore = create<State & Actions>()(
               title: e.title,
               date: e.date,
               time: e.time,
+              durationMinutes: e.durationMinutes,
               goalId: e.goalId,
               color: e.color,
             },
           ],
+        })),
+
+      updateEvent: (id, patch) =>
+        set((s) => ({
+          events: s.events.map((e) => (e.id === id ? { ...e, ...patch } : e)),
         })),
 
       deleteEvent: (id) =>

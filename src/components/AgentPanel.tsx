@@ -38,9 +38,9 @@ type Message = {
 };
 
 const QUICK_ACTIONS = [
-  { label: "Plan my day", prompt: "Look at my goals, habits, and pending tasks. Plan a focused, realistic schedule for today and propose any todos or events I'm missing." },
-  { label: "New goal", prompt: "I want to set up a new goal. Ask me what it is, then propose a full plan." },
-  { label: "Weekly review", prompt: "Summarize my progress this week toward my goals. Suggest adjustments — what to drop, what to add — and propose them as concrete changes." },
+  { label: "Time-block my day", prompt: "Use the plan_day tool to lay out a fully time-blocked day for today based on my goals, habits, and pending todos. Use realistic times — wake/wind-down buffers, deep work in the morning, breaks between blocks, exercise, meals. Don't double-book." },
+  { label: "Plan my week", prompt: "Look at my goals and propose what I should focus on this week. Use plan_day for today and create_todo with time/duration for the rest of the week's key blocks." },
+  { label: "New goal", prompt: "I want to set up a new goal. Ask me what it is, then propose a full plan with the goal, habits, and recurring tasks." },
   { label: "What's next?", prompt: "Look at my goals and what I've done recently. Propose the highest-leverage next 3 things I should add to my plan." },
 ];
 
@@ -50,6 +50,7 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
   create_recurring_rule: Repeat,
   create_todo: ListChecks,
   create_event: CalendarPlus,
+  plan_day: CalendarPlus,
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -58,6 +59,7 @@ const TOOL_LABELS: Record<string, string> = {
   create_recurring_rule: "Recurring task",
   create_todo: "New todo",
   create_event: "New event",
+  plan_day: "Time-blocked day",
 };
 
 function ToolCard({
@@ -71,16 +73,23 @@ function ToolCard({
 }) {
   const Icon = TOOL_ICONS[block.name] ?? Sparkles;
   const label = TOOL_LABELS[block.name] ?? block.name;
-  const title = String(block.input.title ?? "");
+  const isPlan = block.name === "plan_day";
+  const planBlocks = isPlan && Array.isArray(block.input.blocks) ? (block.input.blocks as Array<Record<string, unknown>>) : [];
+  const title = isPlan
+    ? `${planBlocks.length} blocks for ${String(block.input.date ?? "")}`
+    : String(block.input.title ?? "");
   const detailParts: string[] = [];
-  if (block.input.target) detailParts.push(`target ${block.input.target} ${block.input.unit ?? ""}`.trim());
-  if (block.input.pattern) detailParts.push(String(block.input.pattern));
-  if (block.input.date) detailParts.push(String(block.input.date));
-  if (block.input.time) detailParts.push(String(block.input.time));
-  if (block.input.due_date) detailParts.push(`due ${block.input.due_date}`);
-  if (block.input.goal_title) detailParts.push(`→ ${block.input.goal_title}`);
-  if (block.input.priority) detailParts.push(`${block.input.priority} priority`);
-  if (block.input.emoji && block.name === "create_habit") detailParts.unshift(String(block.input.emoji));
+  if (!isPlan) {
+    if (block.input.target) detailParts.push(`target ${block.input.target} ${block.input.unit ?? ""}`.trim());
+    if (block.input.pattern) detailParts.push(String(block.input.pattern));
+    if (block.input.date) detailParts.push(String(block.input.date));
+    if (block.input.time) detailParts.push(String(block.input.time));
+    if (block.input.duration_minutes) detailParts.push(`${block.input.duration_minutes}m`);
+    if (block.input.due_date) detailParts.push(`due ${block.input.due_date}`);
+    if (block.input.goal_title) detailParts.push(`→ ${block.input.goal_title}`);
+    if (block.input.priority) detailParts.push(`${block.input.priority} priority`);
+    if (block.input.emoji && block.name === "create_habit") detailParts.unshift(String(block.input.emoji));
+  }
 
   return (
     <motion.div
@@ -109,6 +118,22 @@ function ToolCard({
           <p className="text-xs text-[var(--muted)] mt-0.5">
             {detailParts.join(" · ")}
           </p>
+        )}
+        {isPlan && planBlocks.length > 0 && (
+          <ul className="mt-1.5 flex flex-col gap-0.5">
+            {planBlocks.slice(0, 8).map((b, i) => (
+              <li key={i} className="text-[11px] text-[var(--muted)] truncate">
+                <span className="font-mono text-[var(--foreground)]">{String(b.time ?? "")}</span>{" "}
+                · {String(b.title ?? "")}{" "}
+                <span className="opacity-60">({Number(b.duration_minutes ?? 30)}m)</span>
+              </li>
+            ))}
+            {planBlocks.length > 8 && (
+              <li className="text-[11px] text-[var(--muted)] opacity-70">
+                + {planBlocks.length - 8} more
+              </li>
+            )}
+          </ul>
         )}
       </div>
       {!applied && (

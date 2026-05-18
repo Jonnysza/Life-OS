@@ -11,12 +11,14 @@ import {
   Flag,
   Repeat,
   GripVertical,
+  Calendar,
 } from "lucide-react";
 import { useStore, useTodosFor } from "@/lib/store";
 import { celebrateBig } from "@/lib/celebrate";
 import { soundCheck, soundGoal } from "@/lib/sound";
 import { PRIORITY_COLOR } from "@/lib/types";
 import type { Todo } from "@/lib/types";
+import { ScheduleView } from "./ScheduleView";
 
 function PriorityFlag({ priority }: { priority?: "low" | "med" | "high" }) {
   if (!priority) return null;
@@ -40,6 +42,7 @@ export function TodosPanel() {
   const soundEnabled = useStore((s) => s.settings.soundEnabled);
   const [text, setText] = useState("");
   const [goalId, setGoalId] = useState<string>("");
+  const [view, setView] = useState<"list" | "schedule">("list");
   const wasAllDone = useRef(false);
 
   function submit() {
@@ -86,23 +89,43 @@ export function TodosPanel() {
           <ListChecks size={14} />
           Today
         </h2>
-        {todos.length > 0 && (
-          <motion.span
-            key={`${done}/${todos.length}`}
-            initial={{ scale: 0.85, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="text-xs text-[var(--muted)]"
-          >
-            {done}/{todos.length}{" "}
-            <span
-              className={`font-semibold ${pct === 100 ? "text-[var(--success)]" : "text-[var(--accent)]"}`}
+        <div className="flex items-center gap-2">
+          {todos.length > 0 && view === "list" && (
+            <motion.span
+              key={`${done}/${todos.length}`}
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-xs text-[var(--muted)]"
             >
-              {pct}%
-            </span>
-          </motion.span>
-        )}
+              {done}/{todos.length}{" "}
+              <span
+                className={`font-semibold ${pct === 100 ? "text-[var(--success)]" : "text-[var(--accent)]"}`}
+              >
+                {pct}%
+              </span>
+            </motion.span>
+          )}
+          <div className="flex p-0.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+            <button
+              onClick={() => setView("list")}
+              className={`px-2 py-0.5 rounded-md text-xs flex items-center gap-1 transition ${view === "list" ? "bg-[var(--surface)] text-[var(--foreground)]" : "text-[var(--muted)]"}`}
+            >
+              <ListChecks size={10} /> List
+            </button>
+            <button
+              onClick={() => setView("schedule")}
+              className={`px-2 py-0.5 rounded-md text-xs flex items-center gap-1 transition ${view === "schedule" ? "bg-[var(--surface)] text-[var(--foreground)]" : "text-[var(--muted)]"}`}
+            >
+              <Calendar size={10} /> Schedule
+            </button>
+          </div>
+        </div>
       </div>
 
+      {view === "schedule" ? (
+        <ScheduleView />
+      ) : (
+      <>
       <div className="flex gap-2 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
         <input
           value={text}
@@ -234,6 +257,8 @@ export function TodosPanel() {
           </AnimatePresence>
         </Reorder.Group>
       </div>
+      </>
+      )}
     </section>
   );
 }

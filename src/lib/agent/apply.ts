@@ -67,6 +67,13 @@ export function applyToolCall(name: string, input: AnyInput): string {
             (g) => g.title.toLowerCase() === goalTitle.toLowerCase()
           )
         : undefined;
+      const time = typeof input.time === "string" ? input.time : undefined;
+      const duration =
+        typeof input.duration_minutes === "number"
+          ? input.duration_minutes
+          : time
+            ? 30
+            : undefined;
       s.addTodo({
         title,
         date,
@@ -75,8 +82,10 @@ export function applyToolCall(name: string, input: AnyInput): string {
           typeof input.priority === "string"
             ? (input.priority as Priority)
             : undefined,
+        time,
+        durationMinutes: duration,
       });
-      return `Added todo "${title}" for ${date}.`;
+      return `Added todo "${title}"${time ? ` at ${time}` : ""} for ${date}.`;
     }
 
     case "create_event": {
@@ -84,8 +93,50 @@ export function applyToolCall(name: string, input: AnyInput): string {
       const date =
         typeof input.date === "string" ? input.date : toDateKey(new Date());
       const time = typeof input.time === "string" ? input.time : undefined;
-      s.addEvent({ title, date, time });
+      const duration =
+        typeof input.duration_minutes === "number"
+          ? input.duration_minutes
+          : time
+            ? 60
+            : undefined;
+      s.addEvent({ title, date, time, durationMinutes: duration });
       return `Added event "${title}" on ${date}${time ? " at " + time : ""}.`;
+    }
+
+    case "plan_day": {
+      const date =
+        typeof input.date === "string" ? input.date : toDateKey(new Date());
+      const blocks = Array.isArray(input.blocks) ? input.blocks : [];
+      let added = 0;
+      for (const b of blocks) {
+        if (typeof b !== "object" || !b) continue;
+        const block = b as Record<string, unknown>;
+        const title = String(block.title ?? "");
+        const time = String(block.time ?? "");
+        const dur = Number(block.duration_minutes ?? 30);
+        if (!title || !time) continue;
+        const kind = block.kind === "event" ? "event" : "todo";
+        const goalTitle =
+          typeof block.goal_title === "string" ? block.goal_title : undefined;
+        const goal = goalTitle
+          ? s.goals.find(
+              (g) => g.title.toLowerCase() === goalTitle.toLowerCase()
+            )
+          : undefined;
+        if (kind === "event") {
+          s.addEvent({ title, date, time, durationMinutes: dur, goalId: goal?.id });
+        } else {
+          s.addTodo({
+            title,
+            date,
+            time,
+            durationMinutes: dur,
+            goalId: goal?.id,
+          });
+        }
+        added++;
+      }
+      return `Scheduled ${added} block${added === 1 ? "" : "s"} for ${date}.`;
     }
 
     default:
