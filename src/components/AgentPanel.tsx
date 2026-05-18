@@ -220,11 +220,36 @@ export function AgentPanel({
   function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    const skippedResults: ToolResultBlock[] = [];
+    const updatedMessages = [...messages];
+    const last = updatedMessages[updatedMessages.length - 1];
+    if (last && last.role === "assistant") {
+      const applied = last.appliedToolIds ?? new Set();
+      const skips: ToolUseBlock[] = [];
+      for (const b of last.content) {
+        if (b.type === "tool_use" && !applied.has(b.id)) skips.push(b);
+      }
+      if (skips.length > 0) {
+        const newApplied = new Set(applied);
+        for (const s of skips) {
+          newApplied.add(s.id);
+          skippedResults.push({
+            type: "tool_result",
+            tool_use_id: s.id,
+            content: "User chose not to apply this proposal.",
+          });
+        }
+        updatedMessages[updatedMessages.length - 1] = {
+          ...last,
+          appliedToolIds: newApplied,
+        };
+      }
+    }
     const next: Message = {
       role: "user",
-      content: [{ type: "text", text: trimmed }],
+      content: [...skippedResults, { type: "text", text: trimmed }],
     };
-    const history = [...messages, next];
+    const history = [...updatedMessages, next];
     setMessages(history);
     setInput("");
     callAgent(history);
