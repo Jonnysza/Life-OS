@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const client = new Anthropic();
+    const client = new Anthropic({ maxRetries: 4 });
     const body = await req.json();
     const messages: Anthropic.MessageParam[] = body.messages ?? [];
     const state: StateSnapshot = body.state;
@@ -85,13 +85,26 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    const response = await client.messages.create({
-      model: "claude-opus-4-7",
-      max_tokens: 4096,
-      system: AGENT_SYSTEM,
-      tools: AGENT_TOOLS,
-      messages: augmented,
-    });
+    async function call(model: string) {
+      return client.messages.create({
+        model,
+        max_tokens: 4096,
+        system: AGENT_SYSTEM,
+        tools: AGENT_TOOLS,
+        messages: augmented,
+      });
+    }
+
+    let response;
+    try {
+      response = await call("claude-sonnet-4-6");
+    } catch (e) {
+      if (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 503)) {
+        response = await call("claude-haiku-4-5");
+      } else {
+        throw e;
+      }
+    }
 
     return NextResponse.json({
       content: response.content,
