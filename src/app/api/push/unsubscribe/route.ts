@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     if (!endpoint) {
       return NextResponse.json({ error: "Missing endpoint" }, { status: 400 });
     }
-    removeSubscription(endpoint);
+    await removeSubscription(endpoint);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";

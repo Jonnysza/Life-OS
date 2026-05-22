@@ -15,6 +15,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { applyToolCall, buildStateSnapshot } from "@/lib/agent/apply";
+import { useUIStore } from "@/lib/uiStore";
 
 type TextBlock = { type: "text"; text: string };
 type ToolUseBlock = {
@@ -161,12 +162,22 @@ export function AgentPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const consumeAIPrompt = useUIStore((s) => s.consumeAIPrompt);
 
   useEffect(() => {
     if (scrollerRef.current) {
       scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
     }
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prompt = consumeAIPrompt();
+    if (prompt) {
+      send(prompt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   async function callAgent(history: Message[]) {
     setLoading(true);

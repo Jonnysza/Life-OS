@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Sparkles, Settings, BarChart3 } from "lucide-react";
+import { Sparkles, Settings, BarChart3, Layers } from "lucide-react";
 import { CommandPalette } from "./CommandPalette";
 import { SettingsModal } from "./SettingsModal";
+import { useUIStore } from "@/lib/uiStore";
 
-export function Header({ onOpenAI }: { onOpenAI: () => void }) {
+export function Header() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const openAI = useUIStore((s) => s.openAI);
+  const openWhiteboard = useUIStore((s) => s.openWhiteboard);
 
   return (
     <>
@@ -27,6 +30,13 @@ export function Header({ onOpenAI }: { onOpenAI: () => void }) {
 
         <div className="flex items-center gap-2">
           <CommandPalette />
+          <button
+            onClick={openWhiteboard}
+            className="w-9 h-9 rounded-full glass border border-[var(--border)] hover:border-[var(--muted)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] transition"
+            title="Vision board"
+          >
+            <Layers size={14} />
+          </button>
           <Link
             href="/stats"
             className="w-9 h-9 rounded-full glass border border-[var(--border)] hover:border-[var(--muted)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] transition"
@@ -44,7 +54,7 @@ export function Header({ onOpenAI }: { onOpenAI: () => void }) {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={onOpenAI}
+            onClick={() => openAI()}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-[var(--accent)] to-[var(--accent-2)] text-white text-sm font-medium shadow-lg shadow-[var(--accent)]/30"
           >
             <Sparkles size={14} />

@@ -12,12 +12,16 @@ import { NotesPanel } from "@/components/NotesPanel";
 import { CalendarPanel } from "@/components/CalendarPanel";
 import { AgentPanel } from "@/components/AgentPanel";
 import { Pomodoro } from "@/components/Pomodoro";
+import { Whiteboard } from "@/components/Whiteboard";
+import { ScheduleSyncProvider } from "@/components/ScheduleSyncProvider";
 import { useStore } from "@/lib/store";
+import { useUIStore } from "@/lib/uiStore";
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
   const selectedDate = useStore((s) => s.selectedDate);
+  const aiOpen = useUIStore((s) => s.aiOpen);
+  const closeAI = useUIStore((s) => s.closeAI);
 
   useEffect(() => {
     setMounted(true);
@@ -37,7 +41,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header onOpenAI={() => setAiOpen(true)} />
+      <Header />
 
       <main className="flex-1 p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
         <motion.div
@@ -80,7 +84,9 @@ export default function Home() {
       </main>
 
       <Pomodoro />
-      <AgentPanel open={aiOpen} onClose={() => setAiOpen(false)} />
+      <Whiteboard />
+      <AgentPanel open={aiOpen} onClose={closeAI} />
+      <ScheduleSyncProvider />
     </div>
   );
 }

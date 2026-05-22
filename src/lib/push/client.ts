@@ -1,5 +1,7 @@
 "use client";
 
+import { getSessionId } from "@/lib/session";
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -19,7 +21,10 @@ export function pushSupported(): boolean {
 }
 
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
-  return navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
+  return navigator.serviceWorker.register("/sw.js", {
+    scope: "/",
+    updateViaCache: "none",
+  });
 }
 
 export async function getCurrentSubscription(): Promise<PushSubscription | null> {
@@ -28,19 +33,26 @@ export async function getCurrentSubscription(): Promise<PushSubscription | null>
   return reg.pushManager.getSubscription();
 }
 
-export async function subscribePush(vapidPublicKey: string): Promise<PushSubscription> {
+export async function subscribePush(
+  vapidPublicKey: string
+): Promise<PushSubscription> {
   const reg = await navigator.serviceWorker.ready;
   const existing = await reg.pushManager.getSubscription();
-  if (existing) return existing;
-  const key = urlBase64ToUint8Array(vapidPublicKey);
-  const sub = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: key.buffer as ArrayBuffer,
-  });
+  let sub = existing;
+  if (!sub) {
+    const key = urlBase64ToUint8Array(vapidPublicKey);
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: key.buffer as ArrayBuffer,
+    });
+  }
   await fetch("/api/push/subscribe", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(sub.toJSON()),
+    body: JSON.stringify({
+      ...sub.toJSON(),
+      sessionId: getSessionId(),
+    }),
   });
   return sub;
 }
@@ -64,7 +76,44 @@ export async function sendTestPush(body?: { title?: string; body?: string }) {
     body: JSON.stringify({
       title: body?.title ?? "Life OS",
       body: body?.body ?? "Test notification — you're all set up.",
+      sessionId: getSessionId(),
     }),
   });
   return res.json();
+}
+
+export async function syncScheduleToServer(
+  blocks: {
+    todoId: string;
+    title: string;
+    date: string;
+    time: string;
+    durationMinutes?: number;
+    kind: "todo" | "event";
+    scheduledFor: number;
+  }[]
+) {
+  try {
+    const res = await fetch("/api/push/schedule", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: getSessionId(), blocks }),
+    });
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function pollCompletedFromServer(): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `/api/push/completed?sessionId=${encodeURIComponent(getSessionId())}`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.todoIds) ? (data.todoIds as string[]) : [];
+  } catch {
+    return [];
+  }
 }

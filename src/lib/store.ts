@@ -15,6 +15,7 @@ import type {
   FocusSession,
   Settings,
   Priority,
+  StickyNote,
 } from "./types";
 import { GOAL_COLORS } from "./types";
 import { toDateKey, uid } from "./utils";
@@ -30,6 +31,7 @@ type State = {
   habitChecks: HabitCheck[];
   moods: Mood[];
   focus: FocusSession[];
+  stickies: StickyNote[];
   settings: Settings;
   selectedDate: string;
 };
@@ -61,6 +63,10 @@ type Actions = {
   toggleHabit: (habitId: string, date: string) => void;
   setMood: (date: string, score: 1 | 2 | 3 | 4 | 5, note?: string) => void;
   addFocusSession: (durationMinutes: number) => void;
+  addSticky: (note: Partial<StickyNote> & { content: string }) => void;
+  updateSticky: (id: string, patch: Partial<StickyNote>) => void;
+  deleteSticky: (id: string) => void;
+  clearStickies: () => void;
   updateSettings: (patch: Partial<Settings>) => void;
   exportData: () => string;
   importData: (json: string) => boolean;
@@ -79,6 +85,7 @@ export const useStore = create<State & Actions>()(
       habitChecks: [],
       moods: [],
       focus: [],
+      stickies: [],
       settings: { soundEnabled: true },
       selectedDate: toDateKey(new Date()),
 
@@ -341,6 +348,37 @@ export const useStore = create<State & Actions>()(
           ],
         })),
 
+      addSticky: (n) =>
+        set((s) => ({
+          stickies: [
+            ...s.stickies,
+            {
+              id: uid(),
+              title: n.title,
+              content: n.content,
+              color: n.color ?? GOAL_COLORS[s.stickies.length % GOAL_COLORS.length],
+              x: n.x ?? Math.floor(Math.random() * 200),
+              y: n.y ?? Math.floor(Math.random() * 200),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        })),
+
+      updateSticky: (id, patch) =>
+        set((s) => ({
+          stickies: s.stickies.map((n) =>
+            n.id === id
+              ? { ...n, ...patch, updatedAt: new Date().toISOString() }
+              : n
+          ),
+        })),
+
+      deleteSticky: (id) =>
+        set((s) => ({ stickies: s.stickies.filter((n) => n.id !== id) })),
+
+      clearStickies: () => set({ stickies: [] }),
+
       updateSettings: (patch) =>
         set((s) => ({ settings: { ...s.settings, ...patch } })),
 
@@ -378,6 +416,7 @@ export const useStore = create<State & Actions>()(
           habitChecks: [],
           moods: [],
           focus: [],
+          stickies: [],
         }),
     }),
     { name: "life-os-store" }

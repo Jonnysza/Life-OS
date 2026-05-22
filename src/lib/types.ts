@@ -91,6 +91,17 @@ export type Settings = {
   soundEnabled: boolean;
 };
 
+export type StickyNote = {
+  id: string;
+  title?: string;
+  content: string;
+  color: string;
+  x: number;
+  y: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export const GOAL_COLORS = [
   "#6366f1",
   "#8b5cf6",

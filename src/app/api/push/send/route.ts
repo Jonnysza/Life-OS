@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWebPush } from "@/lib/push/webpush";
-import { listSubscriptions, removeSubscription } from "@/lib/push/store";
+import {
+  listSubscriptions,
+  listSubscriptionsForSession,
+  removeSubscription,
+} from "@/lib/push/store";
 
 export const runtime = "nodejs";
 
@@ -11,8 +15,11 @@ export async function POST(req: NextRequest) {
     const text = body.body ?? "Hello from Life OS";
     const url = body.url ?? "/";
     const tag = body.tag;
+    const sessionId = body.sessionId as string | undefined;
     const wp = getWebPush();
-    const subs = listSubscriptions();
+    const subs = sessionId
+      ? await listSubscriptionsForSession(sessionId)
+      : await listSubscriptions();
     if (subs.length === 0) {
       return NextResponse.json({ error: "No subscriptions" }, { status: 404 });
     }
@@ -22,17 +29,17 @@ export async function POST(req: NextRequest) {
     );
     let sent = 0;
     let removed = 0;
-    results.forEach((r, i) => {
-      if (r.status === "fulfilled") {
-        sent++;
-      } else {
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status === "fulfilled") sent++;
+      else {
         const reason = r.reason as { statusCode?: number };
         if (reason?.statusCode === 410 || reason?.statusCode === 404) {
-          removeSubscription(subs[i].endpoint);
+          await removeSubscription(subs[i].endpoint);
           removed++;
         }
       }
-    });
+    }
     return NextResponse.json({ ok: true, sent, removed });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
