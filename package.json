@@ -14,7 +14,7 @@
     "issues:create": "node scripts/create-launch-issues.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.96.0",
+    "@anthropic-ai/sdk": "^0.98.0",
     "@upstash/redis": "^1.38.0",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
