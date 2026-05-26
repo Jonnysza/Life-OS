@@ -1,4 +1,4 @@
-const baseUrl = (process.env.PROD_URL ?? "https://life-os-nine-ruby.vercel.app").replace(/\/$/, "");
+const baseUrl = (process.env.PROD_URL || "https://life-os-nine-ruby.vercel.app").replace(/\/$/, "");
 const cronSecret = process.env.CRON_SECRET;
 
 async function check(name, fn) {
