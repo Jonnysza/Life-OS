@@ -36,3 +36,12 @@ Use this as the execution queue. Each item should become either a GitHub issue, 
 - App Store screenshot generator.
 - Landing-page A/B copy log.
 - Analytics dashboard review every Monday.
+
+## GitHub Automations Added
+
+- CI workflow runs lint, typecheck, and production build on push and pull request.
+- Production smoke workflow runs every 6 hours and can also be triggered manually.
+- Dependabot opens weekly dependency update PRs.
+- PR template forces verification and launch-risk checks.
+- Issue templates standardize bugs and launch tasks.
+- `npm run issues:create -- Jonnysza/Life-OS` can generate the launch issue backlog when `GH_TOKEN` is present.

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "verify": "npm run lint && npm run typecheck && npm run build",
     "env:check": "node scripts/check-env.mjs",
-    "smoke:prod": "node scripts/smoke-prod.mjs"
+    "smoke:prod": "node scripts/smoke-prod.mjs",
+    "issues:create": "node scripts/create-launch-issues.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
