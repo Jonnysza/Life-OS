@@ -14,6 +14,7 @@ This is the operational checklist for turning Life OS from a personal build into
 - Add `CRON_SECRET` in Vercel before exposing minute-level cron externally.
 - Configure minute trigger:
   - Free path: cron-job.org calls `https://life-os-nine-ruby.vercel.app/api/cron/notify` every minute with `Authorization: Bearer <CRON_SECRET>`.
+  - Repo fallback: GitHub Actions workflow `Reminder Cron` calls the same endpoint every 5 minutes. This is free but may run late, so it is good enough for testing and light personal use.
   - Paid path: Vercel Pro native cron every minute.
   - Important: `vercel.json` intentionally does not declare a minute cron so the project can deploy on Vercel Hobby.
 - Reinstall the PWA on phone after service worker changes: remove home-screen app, open Safari/Chrome, install again.

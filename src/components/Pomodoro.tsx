@@ -91,7 +91,7 @@ export function Pomodoro() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setOpen(true)}
-            className="fixed bottom-5 right-5 z-30 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-white"
+            className="fixed bottom-5 left-5 z-30 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-white"
             style={{
               background: running
                 ? `conic-gradient(${fabColor} ${pct * 360}deg, color-mix(in oklab, ${fabColor} 30%, transparent) 0deg)`
@@ -118,7 +118,7 @@ export function Pomodoro() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 320, damping: 25 }}
-            className="fixed bottom-5 right-5 z-30 w-72 glass rounded-2xl border border-[var(--border)] shadow-2xl p-5"
+            className="fixed bottom-5 left-5 z-30 w-72 glass rounded-2xl border border-[var(--border)] shadow-2xl p-5"
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold flex items-center gap-2">

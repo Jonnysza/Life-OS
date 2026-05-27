@@ -33,6 +33,20 @@ export async function getCurrentSubscription(): Promise<PushSubscription | null>
   return reg.pushManager.getSubscription();
 }
 
+export async function ensurePushSubscriptionRegistered(): Promise<boolean> {
+  const sub = await getCurrentSubscription();
+  if (!sub) return false;
+  await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...sub.toJSON(),
+      sessionId: getSessionId(),
+    }),
+  });
+  return true;
+}
+
 export async function subscribePush(
   vapidPublicKey: string
 ): Promise<PushSubscription> {
@@ -99,8 +113,21 @@ export async function syncScheduleToServer(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ sessionId: getSessionId(), blocks }),
     });
-    return res.json();
-  } catch {
+    const data = await res.json();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("life-os:schedule-sync", { detail: data })
+      );
+    }
+    return data;
+  } catch (e) {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("life-os:schedule-sync", {
+          detail: { ok: false, error: e instanceof Error ? e.message : "Sync failed" },
+        })
+      );
+    }
     return null;
   }
 }

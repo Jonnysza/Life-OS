@@ -149,7 +149,10 @@ export function buildStateSnapshot() {
   const today = toDateKey(new Date());
   const todosToday = s.todos
     .filter((t) => t.date === today)
-    .map((t) => `${t.done ? "[x]" : "[ ]"} ${t.title}`);
+    .map(
+      (t) =>
+        `${t.done ? "[x]" : "[ ]"} ${t.title}${t.time ? ` at ${t.time}${t.durationMinutes ? ` (${t.durationMinutes}m)` : ""}` : " (unscheduled)"}`
+    );
   return {
     today,
     selectedDate: s.selectedDate,

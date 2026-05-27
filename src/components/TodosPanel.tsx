@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, Reorder } from "motion/react";
 import {
   Plus,
@@ -12,6 +12,8 @@ import {
   Repeat,
   GripVertical,
   Calendar,
+  Clock,
+  Bell,
 } from "lucide-react";
 import { useStore, useTodosFor } from "@/lib/store";
 import { celebrateBig } from "@/lib/celebrate";
@@ -36,14 +38,34 @@ export function TodosPanel() {
   const todos = useTodosFor(selectedDate);
   const addTodo = useStore((s) => s.addTodo);
   const toggleTodo = useStore((s) => s.toggleTodo);
+  const updateTodo = useStore((s) => s.updateTodo);
   const cyclePriority = useStore((s) => s.cyclePriority);
   const reorderTodos = useStore((s) => s.reorderTodos);
   const deleteTodo = useStore((s) => s.deleteTodo);
   const soundEnabled = useStore((s) => s.settings.soundEnabled);
   const [text, setText] = useState("");
   const [goalId, setGoalId] = useState<string>("");
+  const [remindTime, setRemindTime] = useState("");
+  const [duration, setDuration] = useState(30);
   const [view, setView] = useState<"list" | "schedule">("list");
+  const [serverArmed, setServerArmed] = useState<number | null>(null);
   const wasAllDone = useRef(false);
+
+  useEffect(() => {
+    function onSync(event: Event) {
+      const detail = (event as CustomEvent<{ total?: number }>).detail;
+      if (typeof detail?.total === "number") setServerArmed(detail.total);
+    }
+    window.addEventListener("life-os:schedule-sync", onSync);
+    return () => window.removeEventListener("life-os:schedule-sync", onSync);
+  }, []);
+
+  function nextQuarterTime() {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 15, 0, 0);
+    d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
 
   function submit() {
     if (!text.trim()) return;
@@ -51,8 +73,11 @@ export function TodosPanel() {
       title: text.trim(),
       date: selectedDate,
       goalId: goalId || undefined,
+      time: remindTime || undefined,
+      durationMinutes: remindTime ? duration : undefined,
     });
     setText("");
+    window.dispatchEvent(new Event("life-os:force-schedule-sync"));
   }
 
   function toggle(id: string) {
@@ -81,6 +106,7 @@ export function TodosPanel() {
 
   const done = todos.filter((t) => t.done).length;
   const pct = todos.length > 0 ? Math.round((done / todos.length) * 100) : 0;
+  const timedTodos = useMemo(() => todos.filter((t) => t.time && !t.done), [todos]);
 
   return (
     <section className="glass rounded-2xl p-5 flex flex-col gap-4 h-full min-h-0">
@@ -105,6 +131,12 @@ export function TodosPanel() {
               </span>
             </motion.span>
           )}
+          {timedTodos.length > 0 && (
+            <span className="hidden sm:flex items-center gap-1 text-[11px] text-[var(--success)]">
+              <Bell size={11} />
+              {serverArmed ?? timedTodos.length} armed
+            </span>
+          )}
           <div className="flex p-0.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
             <button
               onClick={() => setView("list")}
@@ -126,7 +158,8 @@ export function TodosPanel() {
         <ScheduleView />
       ) : (
       <>
-      <div className="flex gap-2 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+      <div className="flex flex-col gap-2 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+        <div className="flex gap-2">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -156,6 +189,37 @@ export function TodosPanel() {
         >
           <Plus size={14} />
         </motion.button>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="flex items-center gap-1 text-[var(--muted)]">
+            <Clock size={11} /> Reminder
+          </span>
+          <input
+            type="time"
+            value={remindTime}
+            onChange={(e) => setRemindTime(e.target.value)}
+            className="bg-[var(--surface)] px-2 py-1 rounded-md border border-[var(--border)]"
+          />
+          <select
+            value={duration}
+            onChange={(e) => setDuration(Number(e.target.value))}
+            className="bg-[var(--surface)] px-2 py-1 rounded-md border border-[var(--border)]"
+            disabled={!remindTime}
+          >
+            {[15, 30, 45, 60, 90, 120].map((m) => (
+              <option key={m} value={m}>
+                {m} min
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setRemindTime(remindTime ? "" : nextQuarterTime())}
+            className="px-2 py-1 rounded-md bg-[var(--surface)] hover:bg-[var(--border)] text-[var(--muted)]"
+          >
+            {remindTime ? "No reminder" : "Next slot"}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto scroll-hidden -mr-2 pr-2">
@@ -223,6 +287,29 @@ export function TodosPanel() {
                       size={11}
                       className="text-[var(--muted)] flex-shrink-0"
                     />
+                  )}
+                  {t.time ? (
+                    <button
+                      onClick={() => updateTodo(t.id, { time: undefined, durationMinutes: undefined })}
+                      className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[var(--success)]/10 text-[var(--success)] border border-[var(--success)]/20 whitespace-nowrap"
+                      title="Reminder armed. Click to remove time."
+                    >
+                      <Bell size={10} />
+                      {t.time}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() =>
+                        updateTodo(t.id, {
+                          time: nextQuarterTime(),
+                          durationMinutes: 30,
+                        })
+                      }
+                      className="sm:opacity-0 sm:group-hover:opacity-100 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--foreground)] whitespace-nowrap"
+                      title="Add reminder"
+                    >
+                      <Clock size={10} /> remind
+                    </button>
                   )}
                   <button
                     onClick={() => cyclePriority(t.id)}

@@ -22,10 +22,9 @@ export function ScheduleSyncProvider() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    function sync() {
       const now = Date.now();
-      const horizon = now + 7 * 24 * 60 * 60 * 1000;
+      const horizon = now + 14 * 24 * 60 * 60 * 1000;
       const blocks: Parameters<typeof syncScheduleToServer>[0] = [];
       for (const t of todos) {
         if (!t.time || t.done) continue;
@@ -56,11 +55,34 @@ export function ScheduleSyncProvider() {
         });
       }
       syncScheduleToServer(blocks);
-    }, 800);
+    }
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(sync, 800);
+
+    const force = () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      sync();
+    };
+    window.addEventListener("life-os:force-schedule-sync", force);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      window.removeEventListener("life-os:force-schedule-sync", force);
     };
   }, [todos, events]);
+
+  useEffect(() => {
+    async function kickCron() {
+      try {
+        await fetch("/api/cron/notify", { cache: "no-store" });
+      } catch {
+        // External/GitHub cron handles reminders when the app is closed.
+      }
+    }
+    kickCron();
+    const i = setInterval(kickCron, 60_000);
+    return () => clearInterval(i);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

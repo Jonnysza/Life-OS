@@ -7,6 +7,7 @@ import {
   pushSupported,
   registerServiceWorker,
   getCurrentSubscription,
+  ensurePushSubscriptionRegistered,
   subscribePush,
   unsubscribePush,
   sendTestPush,
@@ -19,6 +20,7 @@ export function NotificationsSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [armed, setArmed] = useState<number | null>(null);
 
   useEffect(() => {
     if (!pushSupported()) {
@@ -32,10 +34,20 @@ export function NotificationsSection() {
         await registerServiceWorker();
         const sub = await getCurrentSubscription();
         setSubscribed(!!sub);
+        if (sub) await ensurePushSubscriptionRegistered();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Service worker error");
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    function onSync(event: Event) {
+      const detail = (event as CustomEvent<{ total?: number; error?: string }>).detail;
+      if (typeof detail?.total === "number") setArmed(detail.total);
+    }
+    window.addEventListener("life-os:schedule-sync", onSync);
+    return () => window.removeEventListener("life-os:schedule-sync", onSync);
   }, []);
 
   async function enable() {
@@ -58,7 +70,8 @@ export function NotificationsSection() {
       }
       await subscribePush(vapid);
       setSubscribed(true);
-      setInfo("Notifications enabled.");
+      setInfo("Notifications enabled. Timed tasks will be armed automatically.");
+      window.dispatchEvent(new Event("life-os:force-schedule-sync"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to enable");
     } finally {
@@ -121,7 +134,9 @@ export function NotificationsSection() {
                 </p>
                 <p className="text-xs text-[var(--muted)]">
                   {subscribed
-                    ? "This device will receive pushes."
+                    ? armed === null
+                      ? "This device will receive pushes for tasks with a time."
+                      : `${armed} upcoming timed reminder${armed === 1 ? "" : "s"} armed.`
                     : permission === "denied"
                       ? "Permission denied — unblock in browser settings."
                       : "Enable to receive reminders on this device."}
@@ -158,6 +173,11 @@ export function NotificationsSection() {
               <Send size={13} /> Send test notification
             </motion.button>
           )}
+
+          <p className="text-[11px] text-[var(--muted)] px-1 leading-relaxed">
+            Reminder rule: a task must have a time. Open Today -&gt; List and set
+            a time, or switch to Schedule and drop a task onto the timeline.
+          </p>
 
           {info && (
             <p className="text-xs text-[var(--success)] px-1">{info}</p>

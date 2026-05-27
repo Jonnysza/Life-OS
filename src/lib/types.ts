@@ -89,6 +89,18 @@ export type FocusSession = {
 
 export type Settings = {
   soundEnabled: boolean;
+  themePreset?: "violet" | "blue" | "green" | "rose" | "amber";
+};
+
+export const THEME_PRESETS: Record<
+  NonNullable<Settings["themePreset"]>,
+  { label: string; accent: string; accent2: string }
+> = {
+  violet: { label: "Violet", accent: "#8b5cf6", accent2: "#6366f1" },
+  blue: { label: "Blue", accent: "#2563eb", accent2: "#06b6d4" },
+  green: { label: "Green", accent: "#10b981", accent2: "#84cc16" },
+  rose: { label: "Rose", accent: "#e11d48", accent2: "#f97316" },
+  amber: { label: "Amber", accent: "#d97706", accent2: "#facc15" },
 };
 
 export type StickyNote = {

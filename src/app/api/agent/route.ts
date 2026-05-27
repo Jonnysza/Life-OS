@@ -4,6 +4,21 @@ import { AGENT_TOOLS, AGENT_SYSTEM } from "@/lib/agent/tools";
 
 export const runtime = "nodejs";
 
+const PRIMARY_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+const FALLBACK_MODELS = (process.env.ANTHROPIC_FALLBACK_MODELS || "claude-haiku-4-5")
+  .split(",")
+  .map((m) => m.trim())
+  .filter(Boolean);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryableAnthropicError(e: unknown) {
+  if (!(e instanceof Anthropic.APIError)) return false;
+  return e.status === 408 || e.status === 409 || e.status === 429 || e.status === 500 || e.status === 502 || e.status === 503 || e.status === 529;
+}
+
 type StateSnapshot = {
   today: string;
   selectedDate: string;
@@ -95,16 +110,41 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const models = [PRIMARY_MODEL, ...FALLBACK_MODELS].filter(
+      (m, idx, arr) => arr.indexOf(m) === idx
+    );
     let response;
-    try {
-      response = await call("claude-sonnet-4-6");
-    } catch (e) {
-      if (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 503)) {
-        response = await call("claude-haiku-4-5");
-      } else {
-        throw e;
+    let lastRetryableError: unknown;
+
+    for (const model of models) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await call(model);
+          break;
+        } catch (e) {
+          if (!retryableAnthropicError(e)) throw e;
+          lastRetryableError = e;
+          await sleep(500 + attempt * 900);
+        }
       }
+      if (response) break;
     }
+
+    if (!response && lastRetryableError) {
+      return NextResponse.json({
+        content: [
+          {
+            type: "text",
+            text:
+              "Claude is temporarily overloaded. I saved your message in this chat, but I could not get a reliable planning response yet. Tap Send again in a moment, or try a shorter request like: \"Plan today around my top 3 tasks.\"",
+          },
+        ],
+        stop_reason: "end_turn",
+        retryable: true,
+      });
+    }
+
+    if (!response) throw new Error("No AI response returned.");
 
     return NextResponse.json({
       content: response.content,
@@ -114,6 +154,12 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     const status = err instanceof Anthropic.APIError ? err.status ?? 500 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    const publicMsg =
+      status === 401
+        ? "The AI key is invalid or missing in Vercel settings."
+        : status === 400
+          ? "The AI could not read that conversation state. I reset unsafe tool state; try sending the message again."
+          : msg;
+    return NextResponse.json({ error: publicMsg }, { status });
   }
 }

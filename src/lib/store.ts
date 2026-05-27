@@ -86,7 +86,7 @@ export const useStore = create<State & Actions>()(
       moods: [],
       focus: [],
       stickies: [],
-      settings: { soundEnabled: true },
+      settings: { soundEnabled: true, themePreset: "violet" },
       selectedDate: toDateKey(new Date()),
 
       setSelectedDate: (d) => set({ selectedDate: d }),
@@ -397,7 +397,10 @@ export const useStore = create<State & Actions>()(
             habitChecks: data.habitChecks ?? [],
             moods: data.moods ?? [],
             focus: data.focus ?? [],
-            settings: data.settings ?? { soundEnabled: true },
+            settings: {
+              soundEnabled: data.settings?.soundEnabled ?? true,
+              themePreset: data.settings?.themePreset ?? "violet",
+            },
           });
           return true;
         } catch {

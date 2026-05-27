@@ -11,9 +11,9 @@ import { TodosPanel } from "@/components/TodosPanel";
 import { NotesPanel } from "@/components/NotesPanel";
 import { CalendarPanel } from "@/components/CalendarPanel";
 import { AgentPanel } from "@/components/AgentPanel";
-import { Pomodoro } from "@/components/Pomodoro";
 import { Whiteboard } from "@/components/Whiteboard";
 import { ScheduleSyncProvider } from "@/components/ScheduleSyncProvider";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { useStore } from "@/lib/store";
 import { useUIStore } from "@/lib/uiStore";
 
@@ -41,9 +41,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <ThemeProvider />
       <Header />
 
-      <main className="flex-1 p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
+      <main className="w-full max-w-7xl mx-auto flex-1 p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -64,26 +65,32 @@ export default function Home() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
+          className="grid gap-4 sm:gap-6 grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.75fr)]"
         >
-          <HabitsPanel />
+          <div className="min-h-[560px]">
+            <TodosPanel />
+          </div>
+          <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
+            <GoalsPanel />
+            <HabitsPanel />
+          </div>
         </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[1fr_1.2fr_1fr] flex-1 min-h-[640px]"
+          transition={{ duration: 0.4, delay: 0.18 }}
+          className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
         >
-          <GoalsPanel />
-          <div className="grid gap-4 sm:gap-6 grid-rows-[1fr_1fr] min-h-0">
-            <TodosPanel />
+          <div className="min-h-[420px]">
             <CalendarPanel />
           </div>
+          <div className="min-h-[420px]">
           <NotesPanel />
+          </div>
         </motion.div>
       </main>
 
-      <Pomodoro />
       <Whiteboard />
       <AgentPanel open={aiOpen} onClose={closeAI} />
       <ScheduleSyncProvider />

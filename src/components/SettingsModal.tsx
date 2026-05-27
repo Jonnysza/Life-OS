@@ -2,8 +2,19 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Download, Upload, Trash2, Volume2, VolumeX, Repeat, Plus } from "lucide-react";
+import {
+  X,
+  Download,
+  Upload,
+  Trash2,
+  Volume2,
+  VolumeX,
+  Repeat,
+  Plus,
+  Palette,
+} from "lucide-react";
 import { useStore } from "@/lib/store";
+import { THEME_PRESETS } from "@/lib/types";
 import { patternLabel } from "@/lib/recurrence";
 import { toDateKey } from "@/lib/utils";
 import { NotificationsSection } from "./NotificationsSection";
@@ -111,7 +122,7 @@ export function SettingsModal({
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-3">
                   Preferences
                 </h3>
-                <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--surface-2)]">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--surface-2)] mb-2">
                   <div className="flex items-center gap-3">
                     {settings.soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                     <span className="text-sm">Sound effects</span>
@@ -134,6 +145,33 @@ export function SettingsModal({
                       }}
                     />
                   </button>
+                </div>
+                <div className="p-3 rounded-xl bg-[var(--surface-2)]">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Palette size={16} />
+                    <span className="text-sm">Site color</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {Object.entries(THEME_PRESETS).map(([key, theme]) => (
+                      <button
+                        key={key}
+                        onClick={() =>
+                          updateSettings({
+                            themePreset: key as keyof typeof THEME_PRESETS,
+                          })
+                        }
+                        className={`h-10 rounded-xl border transition ${
+                          settings.themePreset === key
+                            ? "border-white/80 scale-[1.03]"
+                            : "border-[var(--border)] hover:border-[var(--muted)]"
+                        }`}
+                        style={{
+                          background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
+                        }}
+                        title={theme.label}
+                      />
+                    ))}
+                  </div>
                 </div>
               </section>
 

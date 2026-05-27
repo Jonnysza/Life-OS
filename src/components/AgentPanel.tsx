@@ -179,7 +179,7 @@ export function AgentPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  async function callAgent(history: Message[]) {
+  async function callAgent(history: Message[], recovered = false) {
     setLoading(true);
     setError("");
     try {
@@ -202,23 +202,59 @@ export function AgentPanel({
           };
         }),
       }));
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          messages: apiMessages,
-          state: buildStateSnapshot(),
-        }),
-      });
-      const data = await res.json();
+      let res: Response | null = null;
+      let data: { content?: ContentBlock[]; error?: string; retryable?: boolean } | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            messages: apiMessages,
+            state: buildStateSnapshot(),
+          }),
+        });
+        data = await res.json();
+        if (res.ok || ![408, 429, 500, 502, 503, 529].includes(res.status)) break;
+        await new Promise((resolve) => setTimeout(resolve, 700 + attempt * 1000));
+      }
+      if (!res || !data) throw new Error("No response from AI");
       if (!res.ok) {
-        setError(data.error ?? "Agent error");
+        if (res.status === 400 && !recovered) {
+          const lastUser = [...history]
+            .reverse()
+            .find((m) => m.role === "user")
+            ?.content.filter((b): b is TextBlock => b.type === "text")
+            .map((b) => b.text)
+            .join(" ")
+            .trim();
+          if (lastUser) {
+            const fresh: Message[] = [
+              { role: "user", content: [{ type: "text", text: lastUser }] },
+            ];
+            setMessages(fresh);
+            await callAgent(fresh, true);
+            return;
+          }
+        }
+        const friendly =
+          data.error ??
+          "The AI service is having a rough moment. Your data is safe; try again in a few seconds.";
+        const assistantMsg: Message = {
+          role: "assistant",
+          content: [{ type: "text", text: friendly }],
+        };
+        setMessages([...history, assistantMsg]);
         setLoading(false);
         return;
       }
       const assistantMsg: Message = {
         role: "assistant",
-        content: data.content as ContentBlock[],
+        content: data.content ?? [
+          {
+            type: "text",
+            text: "I did not get a usable response. Try one shorter sentence and I will turn it into a plan.",
+          },
+        ],
       };
       setMessages([...history, assistantMsg]);
     } catch (e) {
