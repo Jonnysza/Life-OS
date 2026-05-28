@@ -46,7 +46,7 @@ function HabitCard({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       whileHover={{ y: -2 }}
-      className="group relative flex-shrink-0 w-56 p-4 rounded-2xl border bg-[var(--surface-2)] border-[var(--border)] hover:border-[var(--muted)] transition overflow-hidden"
+      className="group relative flex-shrink-0 w-48 p-3 rounded-xl border bg-[var(--surface-2)] border-[var(--border)] hover:border-[var(--muted)] transition overflow-hidden"
     >
       <div
         className="absolute inset-0 opacity-5 pointer-events-none"
@@ -146,7 +146,7 @@ export function HabitsPanel() {
 
   if (habits.length === 0 && !adding) {
     return (
-      <section className="glass rounded-2xl p-4 flex items-center justify-between">
+      <section className="glass rounded-2xl p-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Repeat size={18} className="text-[var(--muted)]" />
           <div>

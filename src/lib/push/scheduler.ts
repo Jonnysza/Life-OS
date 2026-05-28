@@ -166,3 +166,17 @@ export async function takeCompletedAcks(sessionId: string): Promise<string[]> {
   await r.del(key);
   return ids;
 }
+
+export async function listScheduledForSession(
+  sessionId: string
+): Promise<ScheduledNotification[]> {
+  if (!redisAvailable()) return [];
+  const r = redis();
+  const ids = await r.smembers(SESSION_SCHEDULE_PREFIX + sessionId);
+  if (!ids || ids.length === 0) return [];
+  const keys = ids.map((id) => META_PREFIX + id);
+  const values = await r.mget<ScheduledNotification[]>(...keys);
+  return (values ?? [])
+    .filter((v): v is ScheduledNotification => v !== null)
+    .sort((a, b) => a.scheduledFor - b.scheduledFor);
+}

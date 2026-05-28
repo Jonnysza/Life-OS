@@ -50,7 +50,7 @@ export function GoalsPanel() {
   }
 
   return (
-    <section className="glass rounded-2xl p-5 flex flex-col gap-4 h-full min-h-0">
+    <section className="glass rounded-2xl p-4 flex flex-col gap-3 h-full min-h-0">
       <div className="flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wider text-[var(--muted)] uppercase">
           <Target size={14} />
@@ -128,7 +128,7 @@ export function GoalsPanel() {
         )}
       </AnimatePresence>
 
-      <div className="flex flex-col gap-3 overflow-y-auto scroll-hidden -mr-2 pr-2 flex-1 min-h-0">
+      <div className="flex flex-col gap-2 overflow-y-auto scroll-hidden -mr-2 pr-2 flex-1 min-h-0">
         {goals.length === 0 && !adding && (
           <div className="text-sm text-[var(--muted)] py-12 text-center flex flex-col items-center gap-3">
             <Target size={28} className="opacity-40" />

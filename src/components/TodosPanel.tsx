@@ -109,7 +109,7 @@ export function TodosPanel() {
   const timedTodos = useMemo(() => todos.filter((t) => t.time && !t.done), [todos]);
 
   return (
-    <section className="glass rounded-2xl p-5 flex flex-col gap-4 h-full min-h-0">
+    <section className="glass rounded-2xl p-4 flex flex-col gap-3 h-full min-h-0">
       <div className="flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wider text-[var(--muted)] uppercase">
           <ListChecks size={14} />
@@ -198,7 +198,7 @@ export function TodosPanel() {
             type="time"
             value={remindTime}
             onChange={(e) => setRemindTime(e.target.value)}
-            className="bg-[var(--surface)] px-2 py-1 rounded-md border border-[var(--border)]"
+            className="bg-[var(--surface)] px-2 py-1 rounded-md border border-[var(--border)] min-w-[116px]"
           />
           <select
             value={duration}

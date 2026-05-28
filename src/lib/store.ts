@@ -53,6 +53,13 @@ type Actions = {
   upsertNote: (date: string, content: string) => void;
   deleteNote: (id: string) => void;
   addEvent: (e: Partial<CalEvent> & { title: string; date: string }) => void;
+  upsertGoogleEvents: (
+    events: (Partial<CalEvent> & {
+      title: string;
+      date: string;
+      externalId: string;
+    })[]
+  ) => void;
   updateEvent: (id: string, patch: Partial<CalEvent>) => void;
   deleteEvent: (id: string) => void;
   addRule: (r: Omit<RecurringRule, "id" | "archived">) => void;
@@ -231,9 +238,35 @@ export const useStore = create<State & Actions>()(
               durationMinutes: e.durationMinutes,
               goalId: e.goalId,
               color: e.color,
+              source: e.source ?? "life-os",
+              externalId: e.externalId,
             },
           ],
         })),
+
+      upsertGoogleEvents: (incoming) =>
+        set((s) => {
+          const events = [...s.events];
+          for (const item of incoming) {
+            const idx = events.findIndex(
+              (event) => event.externalId && event.externalId === item.externalId
+            );
+            const next: CalEvent = {
+              id: idx >= 0 ? events[idx].id : uid(),
+              title: item.title,
+              date: item.date,
+              time: item.time,
+              durationMinutes: item.durationMinutes,
+              goalId: item.goalId,
+              color: item.color ?? "#4285f4",
+              source: "google",
+              externalId: item.externalId,
+            };
+            if (idx >= 0) events[idx] = { ...events[idx], ...next };
+            else events.push(next);
+          }
+          return { events };
+        }),
 
       updateEvent: (id, patch) =>
         set((s) => ({
@@ -397,6 +430,7 @@ export const useStore = create<State & Actions>()(
             habitChecks: data.habitChecks ?? [],
             moods: data.moods ?? [],
             focus: data.focus ?? [],
+            stickies: data.stickies ?? [],
             settings: {
               soundEnabled: data.settings?.soundEnabled ?? true,
               themePreset: data.settings?.themePreset ?? "violet",

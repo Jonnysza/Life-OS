@@ -18,6 +18,7 @@ import { THEME_PRESETS } from "@/lib/types";
 import { patternLabel } from "@/lib/recurrence";
 import { toDateKey } from "@/lib/utils";
 import { NotificationsSection } from "./NotificationsSection";
+import { CalendarSyncSection } from "./CalendarSyncSection";
 
 export function SettingsModal({
   open,
@@ -103,7 +104,7 @@ export function SettingsModal({
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", stiffness: 320, damping: 28 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg max-h-[85vh] overflow-y-auto glass rounded-2xl border border-[var(--border)] shadow-2xl"
+            className="w-full max-w-xl max-h-[85vh] overflow-y-auto glass rounded-2xl border border-[var(--border)] shadow-2xl"
           >
             <header className="flex items-center justify-between p-5 border-b border-[var(--border)] sticky top-0 glass z-10">
               <h2 className="text-lg font-semibold">Settings</h2>
@@ -117,6 +118,7 @@ export function SettingsModal({
 
             <div className="p-5 space-y-6">
               <NotificationsSection />
+              <CalendarSyncSection />
 
               <section>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-3">
@@ -185,7 +187,7 @@ export function SettingsModal({
                   <input
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder="Task that repeats — e.g. Review goals"
+                    placeholder="Task that repeats - e.g. Review goals"
                     className="bg-transparent text-sm"
                     onKeyDown={(e) => e.key === "Enter" && addNewRule()}
                   />
@@ -304,7 +306,7 @@ export function SettingsModal({
                   >
                     <Trash2 size={14} />
                     {confirmingClear
-                      ? "Tap again to confirm — this wipes everything"
+                      ? "Tap again to confirm - this wipes everything"
                       : "Clear all data"}
                   </button>
                 </div>

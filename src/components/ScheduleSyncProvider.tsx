@@ -6,6 +6,7 @@ import {
   syncScheduleToServer,
   pollCompletedFromServer,
 } from "@/lib/push/client";
+import { googleCalendarStatus, syncGoogleCalendar } from "@/lib/google/client";
 import { fromDateKey } from "@/lib/utils";
 
 function scheduledFor(date: string, time: string): number {
@@ -20,6 +21,18 @@ export function ScheduleSyncProvider() {
   const events = useStore((s) => s.events);
   const toggleTodo = useStore((s) => s.toggleTodo);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const googleConnectedRef = useRef(false);
+
+  useEffect(() => {
+    googleCalendarStatus()
+      .then((status) => {
+        googleConnectedRef.current =
+          status.configured && status.redis && status.connected && !status.needsReconnect;
+      })
+      .catch(() => {
+        googleConnectedRef.current = false;
+      });
+  }, []);
 
   useEffect(() => {
     function sync() {
@@ -41,6 +54,7 @@ export function ScheduleSyncProvider() {
         });
       }
       for (const e of events) {
+        if (e.source === "google") continue;
         if (!e.time) continue;
         const at = scheduledFor(e.date, e.time);
         if (at <= now || at > horizon) continue;
@@ -55,6 +69,11 @@ export function ScheduleSyncProvider() {
         });
       }
       syncScheduleToServer(blocks);
+      if (googleConnectedRef.current) {
+        syncGoogleCalendar(blocks).catch(() => {
+          googleConnectedRef.current = false;
+        });
+      }
     }
 
     if (debounceRef.current) clearTimeout(debounceRef.current);

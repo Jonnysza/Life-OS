@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
   addDays,
@@ -12,9 +12,8 @@ import {
   subWeeks,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { toDateKey, fromDateKey } from "@/lib/utils";
+import { fromDateKey, toDateKey } from "@/lib/utils";
 
 export function WeekStrip() {
   const selectedDate = useStore((s) => s.selectedDate);
@@ -29,90 +28,79 @@ export function WeekStrip() {
   }, [cursor]);
 
   const activity = useMemo(() => {
-    const m = new Map<string, { total: number; done: number; events: number }>();
+    const map = new Map<string, { total: number; done: number; events: number }>();
     for (const t of todos) {
-      const e = m.get(t.date) ?? { total: 0, done: 0, events: 0 };
-      e.total++;
-      if (t.done) e.done++;
-      m.set(t.date, e);
+      const entry = map.get(t.date) ?? { total: 0, done: 0, events: 0 };
+      entry.total++;
+      if (t.done) entry.done++;
+      map.set(t.date, entry);
     }
-    for (const ev of events) {
-      const e = m.get(ev.date) ?? { total: 0, done: 0, events: 0 };
-      e.events++;
-      m.set(ev.date, e);
+    for (const e of events) {
+      const entry = map.get(e.date) ?? { total: 0, done: 0, events: 0 };
+      entry.events++;
+      map.set(e.date, entry);
     }
-    return m;
+    return map;
   }, [todos, events]);
 
   return (
-    <div className="flex items-center gap-2">
+    <section className="glass rounded-2xl p-2 flex items-center gap-2">
       <button
         onClick={() => setCursor(subWeeks(cursor, 1))}
-        className="w-9 h-9 rounded-xl glass hover:bg-[var(--surface-2)] flex items-center justify-center flex-shrink-0 transition"
+        className="w-8 h-8 rounded-xl hover:bg-[var(--surface-2)] flex items-center justify-center flex-shrink-0 transition"
+        title="Previous week"
       >
-        <ChevronLeft size={16} />
+        <ChevronLeft size={15} />
       </button>
 
-      <div className="flex-1 grid grid-cols-7 gap-2">
-        {days.map((d) => {
-          const key = toDateKey(d);
-          const isSel = key === selectedDate;
-          const isTod = isToday(d);
+      <div className="flex-1 grid grid-cols-7 gap-1.5 min-w-0">
+        {days.map((day) => {
+          const key = toDateKey(day);
+          const selected = key === selectedDate;
+          const today = isToday(day);
           const a = activity.get(key);
-          const completion = a && a.total > 0 ? a.done / a.total : 0;
+          const pct = a && a.total > 0 ? a.done / a.total : 0;
+
           return (
             <motion.button
               key={key}
-              whileHover={{ scale: 1.04, y: -2 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => {
                 setSelectedDate(key);
-                if (!isSameDay(d, cursor)) setCursor(d);
+                if (!isSameDay(day, cursor)) setCursor(day);
               }}
-              className={`relative rounded-xl p-2.5 flex flex-col items-center transition border ${
-                isSel
-                  ? "bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] border-transparent text-white shadow-lg shadow-[var(--accent)]/30"
-                  : "glass border-[var(--border)] hover:border-[var(--muted)]"
+              className={`relative h-14 rounded-xl px-2 flex flex-col items-center justify-center border transition min-w-0 ${
+                selected
+                  ? "bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] border-transparent text-white"
+                  : "bg-[var(--surface-2)]/45 border-[var(--border)] hover:border-[var(--muted)]"
               }`}
             >
               <span
-                className={`text-[10px] uppercase tracking-wider font-medium ${
-                  isSel ? "text-white/80" : "text-[var(--muted)]"
+                className={`text-[9px] uppercase tracking-wider ${
+                  selected ? "text-white/75" : "text-[var(--muted)]"
                 }`}
               >
-                {format(d, "EEE")}
+                {format(day, "EEE")}
               </span>
-              <span className="text-lg font-semibold mt-0.5">
-                {format(d, "d")}
+              <span className="text-base font-semibold leading-tight">
+                {format(day, "d")}
               </span>
-
-              {isTod && !isSel && (
+              {today && !selected && (
                 <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
               )}
-
-              <div className="mt-1.5 h-1 w-full rounded-full overflow-hidden bg-black/20">
-                {a && a.total > 0 && (
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${completion * 100}%` }}
-                    transition={{ duration: 0.5 }}
-                    className={`h-full ${
-                      isSel
+              {(a?.total || a?.events) ? (
+                <span className="absolute bottom-1.5 left-2 right-2 h-1 rounded-full bg-black/20 overflow-hidden">
+                  <span
+                    className={`block h-full rounded-full ${
+                      selected
                         ? "bg-white"
-                        : completion === 1
+                        : pct === 1
                           ? "bg-[var(--success)]"
                           : "bg-[var(--accent)]"
                     }`}
+                    style={{ width: `${Math.max(a?.events ? 12 : 0, pct * 100)}%` }}
                   />
-                )}
-              </div>
-
-              {a?.events ? (
-                <span
-                  className={`absolute bottom-1 right-1.5 w-1 h-1 rounded-full ${
-                    isSel ? "bg-white" : "bg-[var(--accent-2)]"
-                  }`}
-                />
+                </span>
               ) : null}
             </motion.button>
           );
@@ -121,10 +109,11 @@ export function WeekStrip() {
 
       <button
         onClick={() => setCursor(addWeeks(cursor, 1))}
-        className="w-9 h-9 rounded-xl glass hover:bg-[var(--surface-2)] flex items-center justify-center flex-shrink-0 transition"
+        className="w-8 h-8 rounded-xl hover:bg-[var(--surface-2)] flex items-center justify-center flex-shrink-0 transition"
+        title="Next week"
       >
-        <ChevronRight size={16} />
+        <ChevronRight size={15} />
       </button>
-    </div>
+    </section>
   );
 }

@@ -144,3 +144,8 @@ export async function pollCompletedFromServer(): Promise<string[]> {
     return [];
   }
 }
+
+export function calendarFeedUrl(): string {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/api/calendar/ics?sessionId=${encodeURIComponent(getSessionId())}`;
+}

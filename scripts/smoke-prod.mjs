@@ -68,6 +68,18 @@ await check("completed endpoint", async () => {
   await expectStatus("/api/push/completed?sessionId=smoke-test", 200);
 });
 
+await check("calendar feed endpoint", async () => {
+  const res = await expectStatus("/api/calendar/ics?sessionId=smoke-test", 200);
+  const text = await res.text();
+  if (!text.includes("BEGIN:VCALENDAR")) {
+    throw new Error("calendar feed did not return ICS content");
+  }
+});
+
+await check("google calendar status endpoint", async () => {
+  await expectStatus("/api/google/calendar/status?sessionId=smoke-test", 200);
+});
+
 await check("cron endpoint", async () => {
   const headers = cronSecret ? { authorization: `Bearer ${cronSecret}` } : undefined;
   const res = await fetch(`${baseUrl}/api/cron/notify`, { headers });

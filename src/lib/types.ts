@@ -45,6 +45,8 @@ export type CalEvent = {
   durationMinutes?: number;
   goalId?: string;
   color?: string;
+  source?: "google" | "life-os";
+  externalId?: string;
 };
 
 export type RecurrencePattern = "daily" | "weekdays" | "weekly";

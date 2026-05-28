@@ -44,7 +44,7 @@ export default function Home() {
       <ThemeProvider />
       <Header />
 
-      <main className="w-full max-w-7xl mx-auto flex-1 p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
+      <main className="w-full max-w-7xl mx-auto flex-1 p-3 sm:p-4 flex flex-col gap-3 sm:gap-4">
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -65,12 +65,12 @@ export default function Home() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="grid gap-4 sm:gap-6 grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.75fr)]"
+          className="grid gap-3 sm:gap-4 grid-cols-1 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.7fr)]"
         >
-          <div className="min-h-[560px]">
+          <div className="min-h-[520px]">
             <TodosPanel />
           </div>
-          <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
+          <div className="flex flex-col gap-3 sm:gap-4 min-w-0">
             <GoalsPanel />
             <HabitsPanel />
           </div>
@@ -80,13 +80,13 @@ export default function Home() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.18 }}
-          className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
+          className="grid gap-3 sm:gap-4 grid-cols-1 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]"
         >
-          <div className="min-h-[420px]">
+          <div className="min-h-[360px]">
             <CalendarPanel />
           </div>
-          <div className="min-h-[420px]">
-          <NotesPanel />
+          <div className="min-h-[360px]">
+            <NotesPanel />
           </div>
         </motion.div>
       </main>

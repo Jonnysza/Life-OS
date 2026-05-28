@@ -47,4 +47,17 @@ if (!value("CRON_SECRET")) {
   console.warn("warn: CRON_SECRET is optional but recommended before using an external cron trigger");
 }
 
+const googleClient = value("GOOGLE_CLIENT_ID");
+const googleSecret = value("GOOGLE_CLIENT_SECRET");
+if (googleClient || googleSecret) {
+  if (!googleClient) {
+    console.warn("warn: GOOGLE_CLIENT_ID missing, direct Google Calendar sync will stay disabled");
+  }
+  if (!googleSecret) {
+    console.warn("warn: GOOGLE_CLIENT_SECRET missing, direct Google Calendar sync will stay disabled");
+  }
+} else {
+  console.warn("warn: Google Calendar OAuth keys are optional; add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for direct sync");
+}
+
 process.exit(failed ? 1 : 0);
