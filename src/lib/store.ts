@@ -434,6 +434,8 @@ export const useStore = create<State & Actions>()(
             settings: {
               soundEnabled: data.settings?.soundEnabled ?? true,
               themePreset: data.settings?.themePreset ?? "violet",
+              customAccent: data.settings?.customAccent,
+              customAccent2: data.settings?.customAccent2,
             },
           });
           return true;

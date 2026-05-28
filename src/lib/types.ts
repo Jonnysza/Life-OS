@@ -89,13 +89,17 @@ export type FocusSession = {
   completedAt: string;
 };
 
+export type ThemePreset = "violet" | "blue" | "green" | "rose" | "amber";
+
 export type Settings = {
   soundEnabled: boolean;
-  themePreset?: "violet" | "blue" | "green" | "rose" | "amber";
+  themePreset?: ThemePreset | "custom";
+  customAccent?: string;
+  customAccent2?: string;
 };
 
 export const THEME_PRESETS: Record<
-  NonNullable<Settings["themePreset"]>,
+  ThemePreset,
   { label: string; accent: string; accent2: string }
 > = {
   violet: { label: "Violet", accent: "#8b5cf6", accent2: "#6366f1" },

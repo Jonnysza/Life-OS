@@ -14,11 +14,24 @@ import {
   Palette,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { THEME_PRESETS } from "@/lib/types";
+import { THEME_PRESETS, type ThemePreset } from "@/lib/types";
 import { patternLabel } from "@/lib/recurrence";
 import { toDateKey } from "@/lib/utils";
 import { NotificationsSection } from "./NotificationsSection";
 import { CalendarSyncSection } from "./CalendarSyncSection";
+
+const COLOR_PALETTE = [
+  "#8b5cf6",
+  "#2563eb",
+  "#06b6d4",
+  "#10b981",
+  "#84cc16",
+  "#facc15",
+  "#f97316",
+  "#e11d48",
+  "#ec4899",
+  "#ffffff",
+];
 
 export function SettingsModal({
   open,
@@ -48,6 +61,18 @@ export function SettingsModal({
   );
   const [newWeekday, setNewWeekday] = useState(1);
   const [newGoalId, setNewGoalId] = useState("");
+  const activePreset =
+    settings.themePreset && settings.themePreset !== "custom"
+      ? THEME_PRESETS[settings.themePreset]
+      : undefined;
+  const customAccent =
+    settings.themePreset === "custom"
+      ? settings.customAccent ?? THEME_PRESETS.violet.accent
+      : activePreset?.accent ?? THEME_PRESETS.violet.accent;
+  const customAccent2 =
+    settings.themePreset === "custom"
+      ? settings.customAccent2 ?? THEME_PRESETS.violet.accent2
+      : activePreset?.accent2 ?? THEME_PRESETS.violet.accent2;
 
   function onExport() {
     const blob = new Blob([exportData()], { type: "application/json" });
@@ -152,6 +177,11 @@ export function SettingsModal({
                   <div className="flex items-center gap-3 mb-3">
                     <Palette size={16} />
                     <span className="text-sm">Site color</span>
+                    {settings.themePreset === "custom" && (
+                      <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--accent)]">
+                        Custom
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-5 gap-2">
                     {Object.entries(THEME_PRESETS).map(([key, theme]) => (
@@ -159,7 +189,7 @@ export function SettingsModal({
                         key={key}
                         onClick={() =>
                           updateSettings({
-                            themePreset: key as keyof typeof THEME_PRESETS,
+                            themePreset: key as ThemePreset,
                           })
                         }
                         className={`h-10 rounded-xl border transition ${
@@ -173,6 +203,69 @@ export function SettingsModal({
                         title={theme.label}
                       />
                     ))}
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-[var(--border)]">
+                    <div className="grid grid-cols-10 gap-1.5 mb-3">
+                      {COLOR_PALETTE.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() =>
+                            updateSettings({
+                              themePreset: "custom",
+                              customAccent: color,
+                              customAccent2,
+                            })
+                          }
+                          className="h-7 rounded-md border border-[var(--border)] hover:scale-105 transition"
+                          style={{ background: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex items-center gap-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] px-2 py-2">
+                        <span
+                          className="w-5 h-5 rounded-md border border-[var(--border)]"
+                          style={{ background: customAccent }}
+                        />
+                        <span className="text-xs text-[var(--muted)] flex-1">
+                          Primary
+                        </span>
+                        <input
+                          type="color"
+                          value={customAccent}
+                          onChange={(e) =>
+                            updateSettings({
+                              themePreset: "custom",
+                              customAccent: e.target.value,
+                              customAccent2,
+                            })
+                          }
+                          className="w-8 h-7 bg-transparent cursor-pointer"
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] px-2 py-2">
+                        <span
+                          className="w-5 h-5 rounded-md border border-[var(--border)]"
+                          style={{ background: customAccent2 }}
+                        />
+                        <span className="text-xs text-[var(--muted)] flex-1">
+                          Secondary
+                        </span>
+                        <input
+                          type="color"
+                          value={customAccent2}
+                          onChange={(e) =>
+                            updateSettings({
+                              themePreset: "custom",
+                              customAccent,
+                              customAccent2: e.target.value,
+                            })
+                          }
+                          className="w-8 h-7 bg-transparent cursor-pointer"
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
               </section>

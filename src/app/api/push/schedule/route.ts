@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncSessionSchedule } from "@/lib/push/scheduler";
+import { redisAvailable } from "@/lib/push/redis";
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,12 @@ export async function POST(req: NextRequest) {
         scheduledFor: b.scheduledFor,
       }));
     const result = await syncSessionSchedule(sessionId, sanitized);
-    return NextResponse.json({ ok: true, ...result, total: sanitized.length });
+    return NextResponse.json({
+      ok: true,
+      enabled: redisAvailable(),
+      ...result,
+      total: sanitized.length,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -21,7 +21,7 @@ This is the operational checklist for turning Life OS from a personal build into
 - Reinstall the PWA on phone after service worker changes: remove home-screen app, open Safari/Chrome, install again.
 - Test Settings -> Push notifications -> Enable -> Send test.
 - Test Settings -> Google Calendar:
-  - Feed path: copy the Life OS calendar feed into Google Calendar -> Other calendars -> From URL.
+  - Feed path: Settings -> Google Calendar -> Test feed, then copy the Life OS calendar feed into Google Calendar -> Other calendars -> From URL.
   - Direct path: connect Google, create a timed Life OS task, run Sync now, then confirm a Google Calendar event appears with popup reminders.
 - Create a todo time block 2 minutes in the future, wait for notification, tap Done, verify it marks complete.
 
