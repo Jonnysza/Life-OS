@@ -19,6 +19,7 @@ import { patternLabel } from "@/lib/recurrence";
 import { toDateKey } from "@/lib/utils";
 import { NotificationsSection } from "./NotificationsSection";
 import { CalendarSyncSection } from "./CalendarSyncSection";
+import { AccountSection } from "./AccountSection";
 
 const COLOR_PALETTE = [
   "#8b5cf6",
@@ -142,6 +143,7 @@ export function SettingsModal({
             </header>
 
             <div className="p-5 space-y-6">
+              <AccountSection />
               <NotificationsSection />
               <CalendarSyncSection />
 

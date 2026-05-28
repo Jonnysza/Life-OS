@@ -13,6 +13,7 @@ import { CalendarPanel } from "@/components/CalendarPanel";
 import { AgentPanel } from "@/components/AgentPanel";
 import { Whiteboard } from "@/components/Whiteboard";
 import { ScheduleSyncProvider } from "@/components/ScheduleSyncProvider";
+import { SyncProvider } from "@/components/SyncProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { useStore } from "@/lib/store";
 import { useUIStore } from "@/lib/uiStore";
@@ -94,6 +95,7 @@ export default function Home() {
       <Whiteboard />
       <AgentPanel open={aiOpen} onClose={closeAI} />
       <ScheduleSyncProvider />
+      <SyncProvider />
     </div>
   );
 }
