@@ -5,6 +5,7 @@ import {
   listSubscriptionsForSession,
   removeSubscription,
 } from "@/lib/push/store";
+import { resolveOwnerId } from "@/lib/auth/owner";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,16 @@ export async function POST(req: NextRequest) {
     if (subs.length === 0) {
       return NextResponse.json({ error: "No subscriptions" }, { status: 404 });
     }
-    const payload = JSON.stringify({ title, body: text, url, tag });
+    const ownerId = sessionId ? await resolveOwnerId(sessionId) : undefined;
+    const payload = JSON.stringify({
+      title,
+      body: text,
+      url,
+      tag,
+      sessionId,
+      ownerId,
+      data: { ownerId },
+    });
     const results = await Promise.allSettled(
       subs.map((s) => wp.sendNotification(s, payload))
     );

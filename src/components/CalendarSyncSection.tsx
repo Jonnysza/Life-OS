@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { calendarFeedUrl, syncScheduleToServer } from "@/lib/push/client";
+import { getSessionId } from "@/lib/session";
+import { fetchMe } from "@/lib/sync/client";
 import {
   disconnectGoogleCalendar,
   googleCalendarConnectUrl,
@@ -90,6 +92,7 @@ export function CalendarSyncSection() {
   }
 
   useEffect(() => {
+    // Anonymous: session feed URL. Signed-in: account feedKey URL (stable across devices).
     setUrl(calendarFeedUrl());
     refreshStatus();
     setNowMs(Date.now());
@@ -99,6 +102,25 @@ export function CalendarSyncSection() {
     const error = params.get("google_calendar_error");
     if (connected === "connected") setMessage("Google Calendar connected. Sync now will create real Google events.");
     if (error) setMessage(error);
+    (async () => {
+      try {
+        const me = await fetchMe();
+        if (!me?.loggedIn) return;
+        const res = await fetch(
+          `/api/calendar/feed-key?sessionId=${encodeURIComponent(getSessionId())}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.feedKey) {
+          setUrl(
+            `${window.location.origin}/api/calendar/ics?feedKey=${encodeURIComponent(String(data.feedKey))}`
+          );
+        }
+      } catch {
+        // fall back to session feed
+      }
+    })();
+
     return () => clearInterval(timer);
   }, []);
 

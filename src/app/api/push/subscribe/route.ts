@@ -9,12 +9,16 @@ export async function POST(req: NextRequest) {
     if (!body?.endpoint || !body?.keys?.p256dh || !body?.keys?.auth) {
       return NextResponse.json({ error: "Invalid subscription" }, { status: 400 });
     }
+    const sessionId = String(body?.sessionId ?? "").trim();
+    if (!sessionId) {
+      return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
+    }
     await saveSubscription(
       {
         endpoint: body.endpoint,
         keys: body.keys,
       },
-      body.sessionId
+      sessionId
     );
     return NextResponse.json({ ok: true });
   } catch (e) {

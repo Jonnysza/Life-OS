@@ -38,7 +38,7 @@ async function ackAction(sessionId, todoId, action, minutes) {
     await fetch("/api/push/ack", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessionId, todoId, action, minutes }),
+      body: JSON.stringify({ sessionId, ownerId: self.__lifeOwnerId, todoId, action, minutes }),
     });
   } catch {
     // best-effort
@@ -49,6 +49,7 @@ self.addEventListener("notificationclick", (event) => {
   const action = event.action;
   const data = (event.notification && event.notification.data) || {};
   const sessionId = data.sessionId;
+  self.__lifeOwnerId = data.ownerId || self.__lifeOwnerId;
   const todoId = data.todoId;
 
   if (action === "done" && sessionId && todoId) {

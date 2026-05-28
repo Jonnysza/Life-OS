@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncSessionSchedule } from "@/lib/push/scheduler";
+import { syncOwnerSchedule } from "@/lib/push/scheduler";
 import { redisAvailable } from "@/lib/push/redis";
+import { resolveOwnerId } from "@/lib/auth/owner";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     if (!sessionId) {
       return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
     }
+    const ownerId = await resolveOwnerId(sessionId);
     const now = Date.now();
     const sanitized = blocks
       .filter(
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
         kind: b.kind ?? "todo",
         scheduledFor: b.scheduledFor,
       }));
-    const result = await syncSessionSchedule(sessionId, sanitized);
+    const result = await syncOwnerSchedule(ownerId, sanitized);
     return NextResponse.json({
       ok: true,
       enabled: redisAvailable(),

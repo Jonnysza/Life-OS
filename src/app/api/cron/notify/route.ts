@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchDueNotifications, markFired } from "@/lib/push/scheduler";
-import { listSubscriptionsForSession, removeSubscription } from "@/lib/push/store";
+import { listSubscriptionsForOwner, removeSubscription } from "@/lib/push/store";
 import { getWebPush } from "@/lib/push/webpush";
 
 export const runtime = "nodejs";
@@ -70,15 +70,21 @@ export async function GET(req: NextRequest) {
     let removed = 0;
     let noSubs = 0;
     for (const notif of due) {
-      const subs = await listSubscriptionsForSession(notif.sessionId);
+      const subs = await listSubscriptionsForOwner(notif.ownerId);
       if (subs.length === 0) {
-        await markFired(notif.sessionId, notif.todoId);
+        await markFired(notif.ownerId, notif.todoId);
         noSubs++;
         continue;
       }
+      const basePayload = payloadForNotification(notif);
       const payload = JSON.stringify({
-        ...payloadForNotification(notif),
-        sessionId: notif.sessionId,
+        ...basePayload,
+        // keep sessionId for backward compatibility in SW, but prefer ownerId
+        sessionId: notif.ownerId.startsWith("sess:")
+          ? notif.ownerId.slice("sess:".length)
+          : undefined,
+        ownerId: notif.ownerId,
+        data: { ...(basePayload.data ?? {}), ownerId: notif.ownerId },
       });
       const results = await Promise.allSettled(
         subs.map((s) => wp.sendNotification(s, payload))
@@ -94,7 +100,7 @@ export async function GET(req: NextRequest) {
           }
         }
       }
-      await markFired(notif.sessionId, notif.todoId);
+      await markFired(notif.ownerId, notif.todoId);
     }
     return NextResponse.json({
       ok: true,

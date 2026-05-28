@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listScheduledForSession } from "@/lib/push/scheduler";
+import { listScheduledForOwner } from "@/lib/push/scheduler";
+import { ownerIdForFeedKey } from "@/lib/calendar/feedKey";
+import { resolveOwnerId } from "@/lib/auth/owner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,12 +30,21 @@ function lineFold(line: string) {
 }
 
 export async function GET(req: NextRequest) {
+  const feedKey = req.nextUrl.searchParams.get("feedKey")?.trim();
   const sessionId = req.nextUrl.searchParams.get("sessionId")?.trim();
-  if (!sessionId) {
+  let ownerId: string | null = null;
+
+  if (feedKey) {
+    ownerId = await ownerIdForFeedKey(feedKey);
+    if (!ownerId) return new NextResponse("Invalid feedKey", { status: 400 });
+  } else if (sessionId) {
+    ownerId = await resolveOwnerId(sessionId);
+  } else {
     return new NextResponse("Missing sessionId", { status: 400 });
   }
 
-  const items = await listScheduledForSession(sessionId);
+  if (!ownerId) return new NextResponse("Missing ownerId", { status: 400 });
+  const items = await listScheduledForOwner(ownerId);
   const now = stamp(Date.now());
   const lines = [
     "BEGIN:VCALENDAR",
@@ -52,7 +63,7 @@ export async function GET(req: NextRequest) {
     const end = start + (item.durationMinutes ?? (item.kind === "event" ? 60 : 30)) * 60_000;
     lines.push(
       "BEGIN:VEVENT",
-      `UID:${esc(item.sessionId)}-${esc(item.todoId)}@life-os`,
+      `UID:${esc(item.ownerId)}-${esc(item.todoId)}@life-os`,
       `DTSTAMP:${now}`,
       `DTSTART:${stamp(start)}`,
       `DTEND:${stamp(end)}`,

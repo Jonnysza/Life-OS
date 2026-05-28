@@ -3,10 +3,10 @@ import { redis, redisAvailable } from "./redis";
 
 const DUE_ZSET = "push:due";
 const META_PREFIX = "push:meta:";
-const SESSION_SCHEDULE_PREFIX = "push:session-schedule:";
+const OWNER_SCHEDULE_PREFIX = "push:owner-schedule:";
 
 export type ScheduledNotification = {
-  sessionId: string;
+  ownerId: string;
   todoId: string;
   title: string;
   date: string;
@@ -17,8 +17,8 @@ export type ScheduledNotification = {
   scheduledFor: number;
 };
 
-function makeId(sessionId: string, todoId: string): string {
-  return `${sessionId}::${todoId}`;
+function makeId(ownerId: string, todoId: string): string {
+  return `${ownerId}::${todoId}`;
 }
 
 export async function scheduleNotification(
@@ -26,21 +26,21 @@ export async function scheduleNotification(
 ): Promise<void> {
   if (!redisAvailable()) return;
   const r = redis();
-  const id = makeId(notif.sessionId, notif.todoId);
+  const id = makeId(notif.ownerId, notif.todoId);
   const record: ScheduledNotification = { ...notif, snoozeCount: 0 };
   await r.set(META_PREFIX + id, record);
   await r.zadd(DUE_ZSET, { score: notif.scheduledFor, member: id });
-  await r.sadd(SESSION_SCHEDULE_PREFIX + notif.sessionId, id);
+  await r.sadd(OWNER_SCHEDULE_PREFIX + notif.ownerId, id);
 }
 
 export async function rescheduleSnooze(
-  sessionId: string,
+  ownerId: string,
   todoId: string,
   delayMinutes = 5
 ): Promise<ScheduledNotification | null> {
   if (!redisAvailable()) return null;
   const r = redis();
-  const id = makeId(sessionId, todoId);
+  const id = makeId(ownerId, todoId);
   const meta = await r.get<ScheduledNotification>(META_PREFIX + id);
   if (!meta) return null;
   const next = Date.now() + delayMinutes * 60 * 1000;
@@ -55,19 +55,19 @@ export async function rescheduleSnooze(
 }
 
 export async function cancelNotification(
-  sessionId: string,
+  ownerId: string,
   todoId: string
 ): Promise<void> {
   if (!redisAvailable()) return;
   const r = redis();
-  const id = makeId(sessionId, todoId);
+  const id = makeId(ownerId, todoId);
   await r.del(META_PREFIX + id);
   await r.zrem(DUE_ZSET, id);
-  await r.srem(SESSION_SCHEDULE_PREFIX + sessionId, id);
+  await r.srem(OWNER_SCHEDULE_PREFIX + ownerId, id);
 }
 
-export async function syncSessionSchedule(
-  sessionId: string,
+export async function syncOwnerSchedule(
+  ownerId: string,
   blocks: {
     todoId: string;
     title: string;
@@ -80,22 +80,22 @@ export async function syncSessionSchedule(
 ): Promise<{ added: number; removed: number }> {
   if (!redisAvailable()) return { added: 0, removed: 0 };
   const r = redis();
-  const incomingIds = new Set(blocks.map((b) => makeId(sessionId, b.todoId)));
+  const incomingIds = new Set(blocks.map((b) => makeId(ownerId, b.todoId)));
 
-  const existing = await r.smembers(SESSION_SCHEDULE_PREFIX + sessionId);
+  const existing = await r.smembers(OWNER_SCHEDULE_PREFIX + ownerId);
   let removed = 0;
   for (const id of existing) {
     if (!incomingIds.has(id)) {
       await r.del(META_PREFIX + id);
       await r.zrem(DUE_ZSET, id);
-      await r.srem(SESSION_SCHEDULE_PREFIX + sessionId, id);
+      await r.srem(OWNER_SCHEDULE_PREFIX + ownerId, id);
       removed++;
     }
   }
 
   let added = 0;
   for (const block of blocks) {
-    const id = makeId(sessionId, block.todoId);
+    const id = makeId(ownerId, block.todoId);
     const existing = await r.get<ScheduledNotification>(META_PREFIX + id);
     if (
       existing &&
@@ -106,10 +106,10 @@ export async function syncSessionSchedule(
       continue;
     }
     const snoozeCount = existing?.snoozeCount ?? 0;
-    const record: ScheduledNotification = { ...block, sessionId, snoozeCount };
+    const record: ScheduledNotification = { ...block, ownerId, snoozeCount };
     await r.set(META_PREFIX + id, record);
     await r.zadd(DUE_ZSET, { score: block.scheduledFor, member: id });
-    await r.sadd(SESSION_SCHEDULE_PREFIX + sessionId, id);
+    await r.sadd(OWNER_SCHEDULE_PREFIX + ownerId, id);
     added++;
   }
 
@@ -136,43 +136,43 @@ export async function fetchDueNotifications(
 }
 
 export async function markFired(
-  sessionId: string,
+  ownerId: string,
   todoId: string
 ): Promise<void> {
   if (!redisAvailable()) return;
   const r = redis();
-  const id = makeId(sessionId, todoId);
+  const id = makeId(ownerId, todoId);
   await r.zrem(DUE_ZSET, id);
 }
 
 export async function markCompleted(
-  sessionId: string,
+  ownerId: string,
   todoId: string
 ): Promise<void> {
-  await cancelNotification(sessionId, todoId);
+  await cancelNotification(ownerId, todoId);
   if (!redisAvailable()) return;
   const r = redis();
-  const completedKey = `push:completed:${sessionId}`;
+  const completedKey = `push:completed:${ownerId}`;
   await r.sadd(completedKey, todoId);
   await r.expire(completedKey, 60 * 60 * 24 * 2);
 }
 
-export async function takeCompletedAcks(sessionId: string): Promise<string[]> {
+export async function takeCompletedAcks(ownerId: string): Promise<string[]> {
   if (!redisAvailable()) return [];
   const r = redis();
-  const key = `push:completed:${sessionId}`;
+  const key = `push:completed:${ownerId}`;
   const ids = await r.smembers(key);
   if (!ids || ids.length === 0) return [];
   await r.del(key);
   return ids;
 }
 
-export async function listScheduledForSession(
-  sessionId: string
+export async function listScheduledForOwner(
+  ownerId: string
 ): Promise<ScheduledNotification[]> {
   if (!redisAvailable()) return [];
   const r = redis();
-  const ids = await r.smembers(SESSION_SCHEDULE_PREFIX + sessionId);
+  const ids = await r.smembers(OWNER_SCHEDULE_PREFIX + ownerId);
   if (!ids || ids.length === 0) return [];
   const keys = ids.map((id) => META_PREFIX + id);
   const values = await r.mget<ScheduledNotification[]>(...keys);
