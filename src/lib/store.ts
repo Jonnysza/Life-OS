@@ -16,10 +16,45 @@ import type {
   Settings,
   Priority,
   StickyNote,
+  LifeProfile,
+  LifeSystemBlueprint,
+  RoutineTemplate,
 } from "./types";
 import { GOAL_COLORS } from "./types";
 import { toDateKey, uid } from "./utils";
 import { ruleMatches } from "./recurrence";
+import {
+  addDays,
+  normalizeBlueprint,
+  templateMatchesDate,
+  toRoutineTemplate,
+} from "./lifeSystem";
+
+function sameScheduleTitle(a: string, b: string) {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function hasTemplateDuplicate(
+  todos: Todo[],
+  events: CalEvent[],
+  date: string,
+  template: RoutineTemplate
+) {
+  return (
+    todos.some(
+      (t) =>
+        t.date === date &&
+        (t.templateId === template.id ||
+          (t.time === template.time && sameScheduleTitle(t.title, template.title)))
+    ) ||
+    events.some(
+      (e) =>
+        e.date === date &&
+        (e.templateId === template.id ||
+          (e.time === template.time && sameScheduleTitle(e.title, template.title)))
+    )
+  );
+}
 
 type State = {
   goals: Goal[];
@@ -32,6 +67,8 @@ type State = {
   moods: Mood[];
   focus: FocusSession[];
   stickies: StickyNote[];
+  lifeProfile?: LifeProfile;
+  routineTemplates: RoutineTemplate[];
   settings: Settings;
   selectedDate: string;
 };
@@ -74,6 +111,12 @@ type Actions = {
   updateSticky: (id: string, patch: Partial<StickyNote>) => void;
   deleteSticky: (id: string) => void;
   clearStickies: () => void;
+  applyLifeSystemBlueprint: (
+    blueprint: LifeSystemBlueprint | Record<string, unknown>
+  ) => { templates: number; scheduled: number; profile: boolean };
+  materializeRoutineTemplates: (days?: number, startDate?: string) => number;
+  deleteRoutineTemplate: (id: string) => void;
+  clearLifeSystem: () => void;
   updateSettings: (patch: Partial<Settings>) => void;
   exportData: () => string;
   importData: (json: string) => boolean;
@@ -93,6 +136,8 @@ export const useStore = create<State & Actions>()(
       moods: [],
       focus: [],
       stickies: [],
+      lifeProfile: undefined,
+      routineTemplates: [],
       settings: { soundEnabled: true, themePreset: "violet" },
       selectedDate: toDateKey(new Date()),
 
@@ -153,6 +198,7 @@ export const useStore = create<State & Actions>()(
                 recurringId: t.recurringId,
                 time: t.time,
                 durationMinutes: t.durationMinutes,
+                templateId: t.templateId,
                 createdAt: new Date().toISOString(),
               },
             ],
@@ -240,6 +286,7 @@ export const useStore = create<State & Actions>()(
               color: e.color,
               source: e.source ?? "life-os",
               externalId: e.externalId,
+              templateId: e.templateId,
             },
           ],
         })),
@@ -412,6 +459,143 @@ export const useStore = create<State & Actions>()(
 
       clearStickies: () => set({ stickies: [] }),
 
+      applyLifeSystemBlueprint: (raw) => {
+        const today = toDateKey(new Date());
+        const blueprint = normalizeBlueprint(raw as Record<string, unknown>, today);
+        const now = new Date().toISOString();
+        const incoming = blueprint.templates.map((t) => toRoutineTemplate(t, now));
+        let scheduled = 0;
+
+        set((s) => {
+          const templateMap = new Map(s.routineTemplates.map((t) => [t.id, t]));
+          for (const template of incoming) {
+            templateMap.set(template.id, {
+              ...templateMap.get(template.id),
+              ...template,
+              createdAt: templateMap.get(template.id)?.createdAt ?? template.createdAt,
+            });
+          }
+
+          const todos = [...s.todos];
+          const events = [...s.events];
+          const days = Math.max(1, Math.min(14, blueprint.materializeDays ?? 7));
+          for (let offset = 0; offset < days; offset++) {
+            const date = addDays(today, offset);
+            let order = todos.filter((t) => t.date === date).length;
+            for (const template of incoming) {
+              if (!templateMatchesDate(template, date)) continue;
+              if (hasTemplateDuplicate(todos, events, date, template)) continue;
+              if (template.kind === "event") {
+                events.push({
+                  id: uid(),
+                  title: template.title,
+                  date,
+                  time: template.time,
+                  durationMinutes: template.durationMinutes,
+                  color: undefined,
+                  source: "life-os",
+                  templateId: template.id,
+                });
+              } else {
+                todos.push({
+                  id: uid(),
+                  title: template.title,
+                  done: false,
+                  date,
+                  order: order++,
+                  time: template.time,
+                  durationMinutes: template.durationMinutes,
+                  templateId: template.id,
+                  notes: template.notes,
+                  createdAt: now,
+                });
+              }
+              scheduled++;
+            }
+          }
+
+          return {
+            lifeProfile: {
+              ...(s.lifeProfile ?? { updatedAt: now }),
+              ...blueprint.profile,
+              updatedAt: now,
+            },
+            routineTemplates: Array.from(templateMap.values()).sort((a, b) =>
+              a.time.localeCompare(b.time)
+            ),
+            todos,
+            events,
+          };
+        });
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("life-os:force-schedule-sync"));
+        }
+        return {
+          templates: incoming.length,
+          scheduled,
+          profile: Boolean(blueprint.profile),
+        };
+      },
+
+      materializeRoutineTemplates: (days = 7, startDate = toDateKey(new Date())) => {
+        let scheduled = 0;
+        const now = new Date().toISOString();
+        set((s) => {
+          const todos = [...s.todos];
+          const events = [...s.events];
+          for (let offset = 0; offset < Math.max(1, Math.min(14, days)); offset++) {
+            const date = addDays(startDate, offset);
+            let order = todos.filter((t) => t.date === date).length;
+            for (const template of s.routineTemplates) {
+              if (!templateMatchesDate(template, date)) continue;
+              if (hasTemplateDuplicate(todos, events, date, template)) continue;
+              if (template.kind === "event") {
+                events.push({
+                  id: uid(),
+                  title: template.title,
+                  date,
+                  time: template.time,
+                  durationMinutes: template.durationMinutes,
+                  source: "life-os",
+                  templateId: template.id,
+                });
+              } else {
+                todos.push({
+                  id: uid(),
+                  title: template.title,
+                  done: false,
+                  date,
+                  order: order++,
+                  time: template.time,
+                  durationMinutes: template.durationMinutes,
+                  templateId: template.id,
+                  notes: template.notes,
+                  createdAt: now,
+                });
+              }
+              scheduled++;
+            }
+          }
+          return scheduled > 0 ? { todos, events } : {};
+        });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("life-os:force-schedule-sync"));
+        }
+        return scheduled;
+      },
+
+      deleteRoutineTemplate: (id) =>
+        set((s) => ({
+          routineTemplates: s.routineTemplates.filter((t) => t.id !== id),
+        })),
+
+      clearLifeSystem: () =>
+        set({
+          lifeProfile: undefined,
+          routineTemplates: [],
+        }),
+
       updateSettings: (patch) =>
         set((s) => ({ settings: { ...s.settings, ...patch } })),
 
@@ -431,6 +615,8 @@ export const useStore = create<State & Actions>()(
             moods: data.moods ?? [],
             focus: data.focus ?? [],
             stickies: data.stickies ?? [],
+            lifeProfile: data.lifeProfile,
+            routineTemplates: data.routineTemplates ?? [],
             settings: {
               soundEnabled: data.settings?.soundEnabled ?? true,
               themePreset: data.settings?.themePreset ?? "violet",
@@ -456,6 +642,8 @@ export const useStore = create<State & Actions>()(
           moods: [],
           focus: [],
           stickies: [],
+          lifeProfile: undefined,
+          routineTemplates: [],
         }),
     }),
     { name: "life-os-store" }

@@ -99,9 +99,19 @@ export function NotificationsSection() {
     setError("");
     setInfo("");
     try {
-      const res = await sendTestPush();
+      const registered = await ensurePushSubscriptionRegistered();
+      window.dispatchEvent(new Event("life-os:force-schedule-sync"));
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      if (!registered) {
+        setError("This device is not subscribed anymore. Disable and enable notifications again.");
+        return;
+      }
+      const res = await sendTestPush({
+        title: "Life OS notification check",
+        body: "If this arrived, this device can receive the screaming checklist reminders.",
+      });
       if (res.error) setError(res.error);
-      else setInfo(`Sent! ${res.sent} device${res.sent === 1 ? "" : "s"}.`);
+      else setInfo(`Check sent to ${res.sent} device${res.sent === 1 ? "" : "s"}. Timed tasks were re-armed.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send");
     } finally {
@@ -170,7 +180,7 @@ export function NotificationsSection() {
               disabled={busy}
               className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--border)] text-sm transition disabled:opacity-40"
             >
-              <Send size={13} /> Send test notification
+              <Send size={13} /> Run notification check
             </motion.button>
           )}
 

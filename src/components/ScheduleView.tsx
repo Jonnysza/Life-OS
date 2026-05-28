@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus, Trash2, X, Clock } from "lucide-react";
+import { Trash2, X, Clock } from "lucide-react";
 import { useStore, useTodosFor, useEventsFor } from "@/lib/store";
-import { toDateKey, uid } from "@/lib/utils";
+import { toDateKey } from "@/lib/utils";
 
-const START_HOUR = 6;
+const START_HOUR = 5;
 const END_HOUR = 24;
 const HOUR_PX = 64;
+const PX_PER_MIN = HOUR_PX / 60;
 const TOTAL_HEIGHT = (END_HOUR - START_HOUR) * HOUR_PX;
 const SNAP_MIN = 15;
 
@@ -21,6 +22,11 @@ type Block = {
   color: string;
   done?: boolean;
   goalTitle?: string;
+};
+
+type LayoutBlock = Block & {
+  columnIndex: number;
+  columnCount: number;
 };
 
 function parseTime(t: string): number {
@@ -43,6 +49,63 @@ function prettyTime(t: string): string {
 
 function snapMinutes(min: number): number {
   return Math.round(min / SNAP_MIN) * SNAP_MIN;
+}
+
+function minutesToY(minutes: number): number {
+  return (minutes - START_HOUR * 60) * PX_PER_MIN;
+}
+
+function yToMinutes(y: number): number {
+  return y / PX_PER_MIN + START_HOUR * 60;
+}
+
+function layoutOverlappingBlocks(blocks: Block[]): LayoutBlock[] {
+  const sorted = [...blocks].sort((a, b) => {
+    const byStart = parseTime(a.time) - parseTime(b.time);
+    return byStart || a.title.localeCompare(b.title);
+  });
+  const clusters: Block[][] = [];
+  let cluster: Block[] = [];
+  let clusterEnd = 0;
+
+  for (const block of sorted) {
+    const start = parseTime(block.time);
+    const end = start + block.durationMinutes;
+    if (cluster.length > 0 && start >= clusterEnd) {
+      clusters.push(cluster);
+      cluster = [];
+      clusterEnd = 0;
+    }
+    cluster.push(block);
+    clusterEnd = Math.max(clusterEnd, end);
+  }
+  if (cluster.length > 0) clusters.push(cluster);
+
+  const laidOut: LayoutBlock[] = [];
+  for (const group of clusters) {
+    const columnEnds: number[] = [];
+    const placed = group.map((block) => {
+      const start = parseTime(block.time);
+      const end = start + block.durationMinutes;
+      let columnIndex = columnEnds.findIndex((value) => value <= start);
+      if (columnIndex === -1) {
+        columnIndex = columnEnds.length;
+        columnEnds.push(end);
+      } else {
+        columnEnds[columnIndex] = end;
+      }
+      return { ...block, columnIndex, columnCount: 1 };
+    });
+    const columnCount = Math.max(1, columnEnds.length);
+    laidOut.push(
+      ...placed.map((block) => ({
+        ...block,
+        columnCount,
+      }))
+    );
+  }
+
+  return laidOut.sort((a, b) => a.time.localeCompare(b.time));
 }
 
 export function ScheduleView() {
@@ -81,7 +144,7 @@ export function ScheduleView() {
 
   useEffect(() => {
     if (nowMinutes != null && scrollRef.current) {
-      const y = (nowMinutes - START_HOUR * 60) - 80;
+      const y = minutesToY(nowMinutes) - 80;
       scrollRef.current.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
     }
   }, [selectedDate]);
@@ -97,7 +160,7 @@ export function ScheduleView() {
         title: t.title,
         time: t.time,
         durationMinutes: t.durationMinutes ?? 30,
-        color: goal?.color ?? "var(--accent)",
+        color: goal?.color ?? "#8b5cf6",
         done: t.done,
         goalTitle: goal?.title,
       });
@@ -111,21 +174,23 @@ export function ScheduleView() {
         title: e.title,
         time: e.time,
         durationMinutes: e.durationMinutes ?? 60,
-        color: e.color ?? goal?.color ?? "var(--accent-2)",
+        color: e.color ?? goal?.color ?? "#06b6d4",
         goalTitle: goal?.title,
       });
     }
     return out.sort((a, b) => a.time.localeCompare(b.time));
   }, [todos, events, goals]);
 
+  const layoutBlocks = useMemo(() => layoutOverlappingBlocks(blocks), [blocks]);
+
   const unscheduledTodos = todos.filter((t) => !t.time && !t.done);
 
   function blockTop(time: string): number {
-    return parseTime(time) - START_HOUR * 60;
+    return minutesToY(parseTime(time));
   }
 
   function applyDrag(block: Block, deltaY: number) {
-    const newMinutes = snapMinutes(parseTime(block.time) + deltaY);
+    const newMinutes = snapMinutes(parseTime(block.time) + deltaY / PX_PER_MIN);
     const clamped = Math.max(START_HOUR * 60, Math.min((END_HOUR - 0.25) * 60, newMinutes));
     const patch = { time: formatTime(clamped) };
     if (block.kind === "todo") updateTodo(block.id, patch);
@@ -133,7 +198,7 @@ export function ScheduleView() {
   }
 
   function applyResize(block: Block, deltaY: number) {
-    const newDuration = snapMinutes(block.durationMinutes + deltaY);
+    const newDuration = snapMinutes(block.durationMinutes + deltaY / PX_PER_MIN);
     const clamped = Math.max(SNAP_MIN, Math.min(8 * 60, newDuration));
     const patch = { durationMinutes: clamped };
     if (block.kind === "todo") updateTodo(block.id, patch);
@@ -144,8 +209,8 @@ export function ScheduleView() {
     if (e.target !== e.currentTarget) return;
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const minutes = snapMinutes(y + START_HOUR * 60);
-    setAddingAt({ y: minutes - START_HOUR * 60, minutes });
+    const minutes = snapMinutes(yToMinutes(y));
+    setAddingAt({ y: minutesToY(minutes), minutes });
     setNewTitle("");
     setNewDuration(30);
   }
@@ -203,7 +268,7 @@ export function ScheduleView() {
             nowMinutes < END_HOUR * 60 && (
               <div
                 className="absolute left-0 right-0 z-20 pointer-events-none"
-                style={{ top: nowMinutes - START_HOUR * 60 }}
+                style={{ top: minutesToY(nowMinutes) }}
               >
                 <div className="absolute -left-1.5 -top-1.5 w-3 h-3 rounded-full bg-[var(--danger)] shadow-lg shadow-[var(--danger)]/50 animate-pulse" />
                 <div className="h-px bg-[var(--danger)]/70" />
@@ -211,8 +276,9 @@ export function ScheduleView() {
             )}
 
           <AnimatePresence>
-            {blocks.map((b) => {
+            {layoutBlocks.map((b) => {
               const top = blockTop(b.time);
+              const columnWidth = 100 / b.columnCount;
               return (
                 <motion.div
                   key={b.id}
@@ -222,7 +288,7 @@ export function ScheduleView() {
                   dragElastic={0}
                   onDragEnd={(_, info) => applyDrag(b, info.offset.y)}
                   initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1, top, height: b.durationMinutes }}
+                  animate={{ opacity: 1, scale: 1, top, height: b.durationMinutes * PX_PER_MIN }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   whileHover={{ scale: 1.01 }}
                   whileDrag={{ scale: 1.04, zIndex: 30 }}
@@ -231,11 +297,13 @@ export function ScheduleView() {
                     e.stopPropagation();
                     setEditing(b);
                   }}
-                  className="absolute left-1 right-1 rounded-lg overflow-hidden cursor-grab active:cursor-grabbing group"
+                  className="absolute rounded-lg overflow-hidden cursor-grab active:cursor-grabbing group"
                   style={{
+                    left: `calc(${b.columnIndex * columnWidth}% + 4px)`,
+                    width: `calc(${columnWidth}% - 8px)`,
                     background: `linear-gradient(135deg, ${b.color}E6, ${b.color}AA)`,
                     boxShadow: `0 8px 24px -8px ${b.color}80, inset 0 1px 0 rgba(255,255,255,0.15)`,
-                    minHeight: 24,
+                    minHeight: 14,
                   }}
                 >
                   <div className="absolute inset-0 p-2 flex flex-col text-white pointer-events-none">
@@ -279,7 +347,7 @@ export function ScheduleView() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               className="absolute left-1 right-1 z-30 p-2 rounded-lg bg-[var(--surface)] border border-[var(--accent)] shadow-xl"
-              style={{ top: addingAt.y, minHeight: newDuration }}
+              style={{ top: addingAt.y, minHeight: newDuration * PX_PER_MIN }}
             >
               <input
                 autoFocus

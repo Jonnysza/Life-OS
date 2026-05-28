@@ -20,6 +20,7 @@ export function ScheduleSyncProvider() {
   const todos = useStore((s) => s.todos);
   const events = useStore((s) => s.events);
   const toggleTodo = useStore((s) => s.toggleTodo);
+  const materializeRoutineTemplates = useStore((s) => s.materializeRoutineTemplates);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const googleConnectedRef = useRef(false);
 
@@ -33,6 +34,12 @@ export function ScheduleSyncProvider() {
         googleConnectedRef.current = false;
       });
   }, []);
+
+  useEffect(() => {
+    materializeRoutineTemplates(7);
+    const i = setInterval(() => materializeRoutineTemplates(7), 60 * 60 * 1000);
+    return () => clearInterval(i);
+  }, [materializeRoutineTemplates]);
 
   useEffect(() => {
     function sync() {

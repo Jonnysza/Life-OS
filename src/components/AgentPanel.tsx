@@ -15,6 +15,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { applyToolCall, buildStateSnapshot } from "@/lib/agent/apply";
+import { exampleLifeSystemBlueprint, normalizeBlueprint } from "@/lib/lifeSystem";
+import type { BlueprintRoutineTemplate } from "@/lib/types";
 import { useUIStore } from "@/lib/uiStore";
 
 type TextBlock = { type: "text"; text: string };
@@ -39,6 +41,16 @@ type Message = {
 };
 
 const QUICK_ACTIONS = [
+  {
+    label: "Set up my life system",
+    prompt:
+      "Set up my full life system from my current goals and schedule. Use one build_life_system blueprint, make assumptions explicit, avoid duplicates, and make timed blocks reminder-backed and Google Calendar-ready.",
+  },
+  {
+    label: "Guide me",
+    prompt:
+      "Guide me through Life OS in the simplest possible way: notifications, tasks, schedule, AI setup, and Google Calendar sync. Tell me what to click and what matters.",
+  },
   { label: "Time-block my day", prompt: "Use the plan_day tool to lay out a fully time-blocked day for today based on my goals, habits, and pending todos. Use realistic times — wake/wind-down buffers, deep work in the morning, breaks between blocks, exercise, meals. Don't double-book." },
   { label: "Plan my week", prompt: "Look at my goals and propose what I should focus on this week. Use plan_day for today and create_todo with time/duration for the rest of the week's key blocks." },
   { label: "New goal", prompt: "I want to set up a new goal. Ask me what it is, then propose a full plan with the goal, habits, and recurring tasks." },
@@ -52,6 +64,7 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ size?: number }>> = {
   create_todo: ListChecks,
   create_event: CalendarPlus,
   plan_day: CalendarPlus,
+  build_life_system: Sparkles,
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -61,7 +74,65 @@ const TOOL_LABELS: Record<string, string> = {
   create_todo: "New todo",
   create_event: "New event",
   plan_day: "Time-blocked day",
+  build_life_system: "Life system blueprint",
 };
+
+function minutesFor(time: string) {
+  const [h, m] = time.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function dateRangesOverlap(
+  a: BlueprintRoutineTemplate,
+  b: BlueprintRoutineTemplate
+) {
+  const aEnd = a.endDate ?? "9999-12-31";
+  const bEnd = b.endDate ?? "9999-12-31";
+  return a.startDate <= bEnd && b.startDate <= aEnd;
+}
+
+function daysOverlap(a: BlueprintRoutineTemplate, b: BlueprintRoutineTemplate) {
+  const bDays = new Set(b.days);
+  return a.days.some((day) => bDays.has(day));
+}
+
+function sameTitle(a: string, b: string) {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function blueprintNotices(templates: BlueprintRoutineTemplate[]) {
+  const notices: string[] = [];
+  const sorted = [...templates].sort((a, b) => a.time.localeCompare(b.time));
+
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      const a = sorted[i];
+      const b = sorted[j];
+      if (!dateRangesOverlap(a, b) || !daysOverlap(a, b)) continue;
+
+      const aStart = minutesFor(a.time);
+      const bStart = minutesFor(b.time);
+      const overlaps =
+        Math.max(aStart, bStart) <
+        Math.min(aStart + a.durationMinutes, bStart + b.durationMinutes);
+      if (!overlaps) continue;
+
+      if (sameTitle(a.title, b.title) && a.time === b.time) {
+        notices.push(`Duplicate avoided: ${a.title} at ${a.time}`);
+      } else if (a.time === b.time) {
+        notices.push(
+          `Same start: ${a.title} + ${b.title} at ${a.time}. Both can notify.`
+        );
+      } else {
+        notices.push(`Overlap: ${a.title} (${a.time}) and ${b.title} (${b.time}).`);
+      }
+
+      if (notices.length >= 4) return notices;
+    }
+  }
+
+  return notices;
+}
 
 function ToolCard({
   block,
@@ -76,6 +147,8 @@ function ToolCard({
   const label = TOOL_LABELS[block.name] ?? block.name;
   const isPlan = block.name === "plan_day";
   const planBlocks = isPlan && Array.isArray(block.input.blocks) ? (block.input.blocks as Array<Record<string, unknown>>) : [];
+  const blueprint =
+    block.name === "build_life_system" ? normalizeBlueprint(block.input) : null;
   const title = isPlan
     ? `${planBlocks.length} blocks for ${String(block.input.date ?? "")}`
     : String(block.input.title ?? "");
@@ -90,6 +163,138 @@ function ToolCard({
     if (block.input.goal_title) detailParts.push(`→ ${block.input.goal_title}`);
     if (block.input.priority) detailParts.push(`${block.input.priority} priority`);
     if (block.input.emoji && block.name === "create_habit") detailParts.unshift(String(block.input.emoji));
+  }
+
+  if (blueprint) {
+    const timeline = [...blueprint.templates].sort((a, b) =>
+      a.time.localeCompare(b.time)
+    );
+    const notices = blueprintNotices(timeline);
+    const profile = blueprint.profile ?? {};
+
+    return (
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={`p-3 rounded-xl border transition ${
+          applied
+            ? "bg-[var(--success)]/10 border-[var(--success)]/30"
+            : "bg-[var(--surface-2)] border-[var(--border)]"
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              applied
+                ? "bg-[var(--success)]/20 text-[var(--success)]"
+                : "bg-[var(--surface)] text-[var(--accent)]"
+            }`}
+          >
+            {applied ? <Check size={14} /> : <Icon size={14} />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mb-0.5">
+              {label}
+            </p>
+            <p className="text-sm font-semibold truncate">
+              {blueprint.name ?? "Life system"}
+            </p>
+            <p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
+              {blueprint.summary}
+            </p>
+          </div>
+          {!applied && (
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={onApply}
+              className="px-2.5 py-1 rounded-md bg-[var(--accent)] text-white text-xs font-medium hover:opacity-90"
+            >
+              Apply
+            </motion.button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          <div className="rounded-lg bg-[var(--surface)] border border-[var(--border)] p-2">
+            <p className="text-[10px] text-[var(--muted)]">Wake</p>
+            <p className="text-xs font-semibold">{profile.wakeTime ?? "--"}</p>
+          </div>
+          <div className="rounded-lg bg-[var(--surface)] border border-[var(--border)] p-2">
+            <p className="text-[10px] text-[var(--muted)]">Templates</p>
+            <p className="text-xs font-semibold">{blueprint.templates.length}</p>
+          </div>
+          <div className="rounded-lg bg-[var(--surface)] border border-[var(--border)] p-2">
+            <p className="text-[10px] text-[var(--muted)]">Created now</p>
+            <p className="text-xs font-semibold">
+              {blueprint.materializeDays ?? 7}d
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mb-1">
+            Daily timeline
+          </p>
+          <ul className="flex flex-col gap-0.5">
+            {timeline.slice(0, 10).map((t, i) => (
+              <li key={`${t.time}-${t.title}-${i}`} className="text-[11px] text-[var(--muted)] truncate">
+                <span className="font-mono text-[var(--foreground)]">{t.time}</span>{" "}
+                - {t.title}{" "}
+                <span className="opacity-60">
+                  ({t.durationMinutes}m{t.phaseLabel ? `, ${t.phaseLabel}` : ""})
+                </span>
+              </li>
+            ))}
+            {timeline.length > 10 && (
+              <li className="text-[11px] text-[var(--muted)] opacity-70">
+                + {timeline.length - 10} more
+              </li>
+            )}
+          </ul>
+        </div>
+
+        {blueprint.assumptions && blueprint.assumptions.length > 0 && (
+          <div className="mt-3">
+            <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mb-1">
+              Assumptions
+            </p>
+            <ul className="flex flex-col gap-1">
+              {blueprint.assumptions.slice(0, 4).map((item, i) => (
+                <li key={i} className="text-[11px] text-[var(--muted)] leading-relaxed">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-3 rounded-lg bg-[var(--surface)] border border-[var(--border)] p-2">
+          <p className="text-[11px] font-medium">Automation path</p>
+          <p className="text-[11px] text-[var(--muted)] mt-0.5 leading-relaxed">
+            Applying creates editable routines, schedules the next week, arms
+            push reminders, updates the live calendar feed, and pushes to Google
+            Calendar when connected.
+          </p>
+        </div>
+
+        {notices.length > 0 && (
+          <div className="mt-2 rounded-lg bg-[var(--danger)]/10 border border-[var(--danger)]/30 p-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--danger)]">
+              <AlertTriangle size={12} />
+              Overlap check
+            </div>
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {notices.map((notice, i) => (
+                <li key={i} className="text-[11px] text-[var(--muted)]">
+                  {notice}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </motion.div>
+    );
   }
 
   return (
@@ -367,6 +572,29 @@ export function AgentPanel({
     setError("");
   }
 
+  function showExampleBlueprint() {
+    if (loading) return;
+    const blueprint = exampleLifeSystemBlueprint();
+    const now = Date.now();
+    const assistantMsg: Message = {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text:
+            "Here is a ready-to-use setup. Review it first, then apply it if it matches the system you want.",
+        },
+        {
+          type: "tool_use",
+          id: `example-life-system-${now}`,
+          name: "build_life_system",
+          input: blueprint as unknown as Record<string, unknown>,
+        },
+      ],
+    };
+    setMessages((prev) => [...prev, assistantMsg]);
+  }
+
   return (
     <AnimatePresence>
       {open && (
@@ -430,6 +658,12 @@ export function AgentPanel({
                     </button>
                   ))}
                 </div>
+                <button
+                  onClick={showExampleBlueprint}
+                  className="text-xs px-3 py-2 rounded-lg bg-[var(--accent)] text-white font-medium hover:opacity-90 transition"
+                >
+                  Load ready-to-use example
+                </button>
               </div>
             )}
 

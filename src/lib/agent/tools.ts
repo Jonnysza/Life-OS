@@ -138,6 +138,73 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ["date", "blocks"],
     },
   },
+  {
+    name: "build_life_system",
+    description:
+      "Build one complete 30-day operating-system blueprint from a broad setup prompt. Use this instead of many separate tool calls when the user describes a full routine, schedule, habits, sleep, work blocks, fitness, reading, meals, or recurring lifestyle system.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        summary: { type: "string" },
+        materialize_days: {
+          type: "number",
+          description: "How many upcoming days to create as concrete scheduled tasks now. Default 7.",
+        },
+        profile: {
+          type: "object",
+          properties: {
+            wake_time: { type: "string", description: "HH:mm 24-hour" },
+            sleep_target_min_hours: { type: "number" },
+            sleep_target_max_hours: { type: "number" },
+            work_domains: { type: "array", items: { type: "string" } },
+            cadence: { type: "string", enum: ["daily", "weekdays"] },
+          },
+        },
+        assumptions: { type: "array", items: { type: "string" } },
+        templates: {
+          type: "array",
+          description: "Reusable routine templates. These become editable routines and materialize into the next 7 days without duplication.",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              category: {
+                type: "string",
+                enum: [
+                  "gym",
+                  "work",
+                  "meal",
+                  "research",
+                  "content",
+                  "networking",
+                  "reading",
+                  "sleep",
+                  "routine",
+                  "review",
+                ],
+              },
+              kind: { type: "string", enum: ["todo", "event"] },
+              time: { type: "string", description: "HH:mm 24-hour" },
+              duration_minutes: { type: "number" },
+              days: {
+                type: "array",
+                items: { type: "number" },
+                description: "0=Sun through 6=Sat. Use all seven days unless user says otherwise.",
+              },
+              start_date: { type: "string", description: "YYYY-MM-DD" },
+              end_date: { type: "string", description: "Optional YYYY-MM-DD" },
+              notes: { type: "string" },
+              phase_label: { type: "string" },
+              source: { type: "string", enum: ["ai", "example", "user"] },
+            },
+            required: ["title", "category", "kind", "time", "duration_minutes", "days", "start_date"],
+          },
+        },
+      },
+      required: ["summary", "templates"],
+    },
+  },
 ];
 
 export const AGENT_SYSTEM = `You are Life OS — the user's AI chief of staff. You're a real partner, not a tool dispenser. You think like someone who genuinely cares about the user's life and wants to help them win.
@@ -165,6 +232,16 @@ PLANNING APPROACH
 - TIME-BLOCK by default. Todos for today or this week should have a 'time' and 'duration_minutes' so they land on the schedule.
 - For "plan my day": use the plan_day tool with a full ordered list of blocks. Realistic timing — wake/morning routine, deep work in morning, breaks, meals, afternoon work, exercise, wind-down. Don't double-book.
 - Default assumptions: wake 7am, deep work 9-12, lunch 12-1, meetings/admin afternoon, exercise 5pm, dinner 7, wind down 9-10. Override if state suggests different patterns.
+
+LIFE SYSTEM BLUEPRINTS
+- For broad setup prompts like "set up my whole routine", "schedule the next month", "billionaire routine", or anything involving wake/sleep/gym/work/reading/meals, use exactly ONE build_life_system tool call. Do not create 30 plan_day tool calls.
+- A life-system blueprint should become templates, not a pile of static tasks. Materialize only the next 7 days immediately.
+- If the user asks to schedule the next 30 days or the next month, still use build_life_system. The next 30 days live as editable routine templates; only the next 7 days become concrete dated blocks now.
+- For follow-up changes to a routine, send one updated build_life_system blueprint that reflects the whole intended system instead of patching dozens of individual days.
+- If the user gives wake 5am, gym 90m, three 90m work blocks, reading 15m AM/30m PM doubling after 30 days, and 7-9 hours sleep, build this directly. Do not ask follow-up questions.
+- Avoid duplicate blocks. Same title + same time means the same item. Different titles at the same time can coexist, like "Wake up" and "Take supplements", but mention the overlap in assumptions.
+- Read existing schedule/templates before adding new ones. If there are conflicts, build around them or make the conflict explicit in the blueprint assumptions.
+- Every timed blueprint block feeds push reminders, the live calendar feed, and direct Google Calendar sync when connected. Mention this once when relevant, but keep the plan simple.
 
 CONTEXT
 - The user's current state is shown at the top of every turn inside <state> tags. Read it carefully.

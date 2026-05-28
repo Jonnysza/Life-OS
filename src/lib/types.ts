@@ -25,6 +25,7 @@ export type Todo = {
   recurringId?: string;
   time?: string;
   durationMinutes?: number;
+  templateId?: string;
   createdAt: string;
   completedAt?: string;
 };
@@ -47,6 +48,7 @@ export type CalEvent = {
   color?: string;
   source?: "google" | "life-os";
   externalId?: string;
+  templateId?: string;
 };
 
 export type RecurrencePattern = "daily" | "weekdays" | "weekly";
@@ -118,6 +120,60 @@ export type StickyNote = {
   y: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type RoutineCategory =
+  | "gym"
+  | "work"
+  | "meal"
+  | "research"
+  | "content"
+  | "networking"
+  | "reading"
+  | "sleep"
+  | "routine"
+  | "review";
+
+export type LifeProfile = {
+  wakeTime?: string;
+  sleepTargetMinHours?: number;
+  sleepTargetMaxHours?: number;
+  workDomains?: string[];
+  cadence?: "daily" | "weekdays";
+  updatedAt: string;
+};
+
+export type RoutineTemplate = {
+  id: string;
+  title: string;
+  category: RoutineCategory;
+  kind: "todo" | "event";
+  time: string;
+  durationMinutes: number;
+  days: number[];
+  startDate: string;
+  endDate?: string;
+  notes?: string;
+  source: "ai" | "user" | "example";
+  phaseLabel?: string;
+  createdAt: string;
+};
+
+export type BlueprintRoutineTemplate = Omit<
+  RoutineTemplate,
+  "id" | "createdAt"
+> & {
+  id?: string;
+  createdAt?: string;
+};
+
+export type LifeSystemBlueprint = {
+  name?: string;
+  summary: string;
+  profile?: Partial<Omit<LifeProfile, "updatedAt">>;
+  assumptions?: string[];
+  materializeDays?: number;
+  templates: BlueprintRoutineTemplate[];
 };
 
 export const GOAL_COLORS = [

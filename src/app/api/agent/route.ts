@@ -22,6 +22,36 @@ function retryableAnthropicError(e: unknown) {
 type StateSnapshot = {
   today: string;
   selectedDate: string;
+  lifeProfile?: {
+    wakeTime?: string;
+    sleepTargetMinHours?: number;
+    sleepTargetMaxHours?: number;
+    workDomains?: string[];
+    cadence?: "daily" | "weekdays";
+  };
+  routineTemplates?: {
+    id: string;
+    title: string;
+    category: string;
+    kind: string;
+    time: string;
+    durationMinutes: number;
+    days: number[];
+    startDate: string;
+    endDate?: string;
+    phaseLabel?: string;
+  }[];
+  upcomingSchedule?: {
+    date: string;
+    time: string;
+    title: string;
+    durationMinutes?: number;
+    kind: "todo" | "event";
+    done?: boolean;
+    source?: string;
+    templateId?: string;
+  }[];
+  timedReminderCount?: number;
   goals: { title: string; current: number; target: number; unit: string; dueDate?: string }[];
   habits: { title: string; emoji: string }[];
   rules: { title: string; pattern: string; weekday?: number }[];
@@ -52,8 +82,52 @@ function renderState(state: StateSnapshot): string {
   const todos = state.todosToday.length
     ? state.todosToday.map((t) => `- ${t}`).join("\n")
     : "  (none)";
+  const lifeProfile = state.lifeProfile
+    ? [
+        state.lifeProfile.wakeTime ? `wake=${state.lifeProfile.wakeTime}` : "",
+        state.lifeProfile.sleepTargetMinHours && state.lifeProfile.sleepTargetMaxHours
+          ? `sleep=${state.lifeProfile.sleepTargetMinHours}-${state.lifeProfile.sleepTargetMaxHours}h`
+          : "",
+        state.lifeProfile.cadence ? `cadence=${state.lifeProfile.cadence}` : "",
+        state.lifeProfile.workDomains?.length
+          ? `work=${state.lifeProfile.workDomains.join(", ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("; ")
+    : "  (none)";
+  const templates = state.routineTemplates?.length
+    ? state.routineTemplates
+        .slice(0, 40)
+        .map(
+          (t) =>
+            `- ${t.time} ${t.title} (${t.durationMinutes}m, ${t.category}, ${t.kind}, ${t.days.join("")}${t.phaseLabel ? `, ${t.phaseLabel}` : ""})`
+        )
+        .join("\n")
+    : "  (none)";
+  const upcoming = state.upcomingSchedule?.length
+    ? state.upcomingSchedule
+        .slice(0, 80)
+        .map(
+          (item) =>
+            `- ${item.date} ${item.time} ${item.title} (${item.durationMinutes ?? 30}m, ${item.kind}${item.done ? ", done" : ""}${item.source === "google" ? ", google" : ""})`
+        )
+        .join("\n")
+    : "  (none)";
 
   return `<state today="${state.today}" selected_date="${state.selectedDate}" streak="${state.streak}">
+LIFE PROFILE:
+${lifeProfile}
+
+ROUTINE TEMPLATES:
+${templates}
+
+UPCOMING 7-DAY TIMED SCHEDULE:
+${upcoming}
+
+TIMED REMINDERS:
+- ${state.timedReminderCount ?? 0} upcoming timed Life OS items are eligible for notifications and Google Calendar sync.
+
 GOALS:
 ${goals}
 
@@ -158,7 +232,7 @@ export async function POST(req: NextRequest) {
       status === 401
         ? "The AI key is invalid or missing in Vercel settings."
         : status === 400
-          ? "The AI could not read that conversation state. I reset unsafe tool state; try sending the message again."
+          ? "I lost the previous tool state, so I reset the planner context. Send the request once more and I will rebuild it as one clean blueprint."
           : msg;
     return NextResponse.json({ error: publicMsg }, { status });
   }

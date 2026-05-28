@@ -213,7 +213,9 @@ export function CalendarSyncSection() {
           <div className="min-w-0">
             <p className="text-sm font-medium">Calendar connection status</p>
             <p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
-              The feed works now. Direct Google event editing turns on after Google OAuth keys are added.
+              Life OS stays the control center. Timed blocks also mirror to Google
+              through the live feed, and direct sync pushes real Google events
+              when your account is connected.
             </p>
           </div>
         </div>
@@ -276,8 +278,15 @@ export function CalendarSyncSection() {
 
           {!canConnect && (
             <p className="text-[11px] text-[var(--muted)] leading-relaxed mb-2">
-              Direct Google sync is off on this deployment because Google OAuth
-              keys are not in Vercel yet. The live feed above is the working path today.
+              Direct Google sync needs Google OAuth keys in Vercel. Until then,
+              the live feed above still keeps your timed Life OS schedule visible
+              across devices in Google Calendar.
+            </p>
+          )}
+          {connected && (
+            <p className="text-[11px] text-[var(--success)] leading-relaxed mb-2">
+              Automatic sync is on. New timed Life OS blocks are pushed to Google
+              after changes, and you can import Google events back into Life OS.
             </p>
           )}
 
