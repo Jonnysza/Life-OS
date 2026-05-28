@@ -20,6 +20,7 @@ import { toDateKey } from "@/lib/utils";
 import { NotificationsSection } from "./NotificationsSection";
 import { CalendarSyncSection } from "./CalendarSyncSection";
 import { AccountSection } from "./AccountSection";
+import { DiagnosticsSection } from "./DiagnosticsSection";
 
 const COLOR_PALETTE = [
   "#8b5cf6",
@@ -146,6 +147,7 @@ export function SettingsModal({
               <AccountSection />
               <NotificationsSection />
               <CalendarSyncSection />
+              <DiagnosticsSection />
 
               <section>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-3">
