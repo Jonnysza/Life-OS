@@ -15,6 +15,12 @@ type OwnerDebug = {
   error?: string;
 };
 
+function readError(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const rec = value as Record<string, unknown>;
+  return typeof rec.error === "string" ? rec.error : undefined;
+}
+
 export function DiagnosticsSection() {
   const [debug, setDebug] = useState<OwnerDebug | null>(null);
   const [busy, setBusy] = useState<null | "refresh" | "copy" | "check">(null);
@@ -28,8 +34,9 @@ export function DiagnosticsSection() {
         `/api/debug/owner?sessionId=${encodeURIComponent(getSessionId())}`,
         { cache: "no-store" }
       );
-      const data = (await res.json().catch(() => ({}))) as OwnerDebug;
-      if (!res.ok) throw new Error((data as any)?.error ?? "Debug failed.");
+      const dataUnknown = await res.json().catch(() => ({}));
+      const data = dataUnknown as OwnerDebug;
+      if (!res.ok) throw new Error(readError(dataUnknown) ?? "Debug failed.");
       setDebug(data);
     } catch (e) {
       setDebug(null);
@@ -146,4 +153,3 @@ export function DiagnosticsSection() {
     </section>
   );
 }
-
