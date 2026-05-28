@@ -16,36 +16,37 @@ function payloadForNotification(notif: {
   time: string;
 }) {
   const escalation = notif.snoozeCount;
+
+  // Keep this 100% ASCII; Windows+git can otherwise create mojibake.
+  const urgent = escalation >= 2;
   let prefix = "";
-  let urgent = false;
-  if (escalation >= 3) {
-    prefix = "🚨 STILL not done — ";
-    urgent = true;
-  } else if (escalation >= 1) {
-    prefix = `⏰ Reminder #${escalation + 1} — `;
-    urgent = escalation >= 2;
-  } else {
-    prefix = notif.kind === "event" ? "📅 " : "⏱ ";
-  }
+  if (escalation >= 3) prefix = "ALERT: STILL not done - ";
+  else if (escalation >= 1) prefix = `Reminder #${escalation + 1} - `;
+  else prefix = notif.kind === "event" ? "Event - " : "Reminder - ";
+
   const verb = notif.kind === "event" ? "Starting now" : "Time for";
   const body =
     notif.kind === "event"
-      ? `${notif.time}${notif.durationMinutes ? ` · ${notif.durationMinutes}m` : ""}`
+      ? `${notif.time}${notif.durationMinutes ? ` - ${notif.durationMinutes}m` : ""}`
       : `Scheduled at ${notif.time}${notif.durationMinutes ? ` for ${notif.durationMinutes}m` : ""}. Did you do it?`;
+
   const vibrate = urgent
     ? [400, 100, 400, 100, 400, 100, 600]
     : escalation >= 1
       ? [250, 100, 250, 100, 250]
       : [120, 60, 120];
+
   return {
     title: `${prefix}${notif.title}`,
     body: `${verb}: ${body}`,
     tag: `block-${notif.todoId}`,
-    requireInteraction: urgent,
+    // "Screaming checklist" mode: keep todo reminders on-screen until acted on.
+    // For events, don't force persistence.
+    requireInteraction: notif.kind === "todo",
     vibrate,
     actions: [
-      { action: "done", title: "✅ Done" },
-      { action: "snooze", title: "💤 5 min" },
+      { action: "done", title: "Done" },
+      { action: "snooze", title: "5 min" },
     ],
     data: { todoId: notif.todoId, kind: notif.kind, escalation, verb },
   };
@@ -53,22 +54,22 @@ function payloadForNotification(notif: {
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
-  if (
-    process.env.CRON_SECRET &&
-    auth !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
   try {
     const now = Date.now();
     const due = await fetchDueNotifications(now + 30_000, 100);
     if (due.length === 0) {
       return NextResponse.json({ ok: true, scanned: 0 });
     }
+
     const wp = getWebPush();
     let sent = 0;
     let removed = 0;
     let noSubs = 0;
+
     for (const notif of due) {
       const subs = await listSubscriptionsForOwner(notif.ownerId);
       if (subs.length === 0) {
@@ -76,6 +77,7 @@ export async function GET(req: NextRequest) {
         noSubs++;
         continue;
       }
+
       const basePayload = payloadForNotification(notif);
       const payload = JSON.stringify({
         ...basePayload,
@@ -86,9 +88,11 @@ export async function GET(req: NextRequest) {
         ownerId: notif.ownerId,
         data: { ...(basePayload.data ?? {}), ownerId: notif.ownerId },
       });
+
       const results = await Promise.allSettled(
         subs.map((s) => wp.sendNotification(s, payload))
       );
+
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
         if (r.status === "fulfilled") sent++;
@@ -100,8 +104,10 @@ export async function GET(req: NextRequest) {
           }
         }
       }
+
       await markFired(notif.ownerId, notif.todoId);
     }
+
     return NextResponse.json({
       ok: true,
       scanned: due.length,
@@ -114,3 +120,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
