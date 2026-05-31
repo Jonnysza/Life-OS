@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useShallow } from "zustand/shallow";
 import { useEventsFor, useStore, useTodosFor } from "@/lib/store";
 import { fromDateKey, toDateKey } from "@/lib/utils";
 import { soundCheck } from "@/lib/sound";
@@ -46,7 +47,7 @@ export function CalendarPanel() {
   const setSelectedDate = useStore((s) => s.setSelectedDate);
   const allTodos = useStore((s) => s.todos);
   const allEvents = useStore((s) => s.events);
-  const habits = useStore((s) => s.habits.filter((h) => !h.archived));
+  const habits = useStore(useShallow((s) => s.habits.filter((h) => !h.archived)));
   const habitChecks = useStore((s) => s.habitChecks);
   const addEvent = useStore((s) => s.addEvent);
   const deleteEvent = useStore((s) => s.deleteEvent);
