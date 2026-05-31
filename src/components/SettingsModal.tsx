@@ -180,7 +180,7 @@ export function SettingsModal({
                 <div className="p-3 rounded-xl bg-[var(--surface-2)]">
                   <div className="flex items-center gap-3 mb-3">
                     <Palette size={16} />
-                    <span className="text-sm">Site color</span>
+                    <span className="text-sm">Dashboard theme</span>
                     {settings.themePreset === "custom" && (
                       <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--accent)]">
                         Custom
@@ -202,7 +202,7 @@ export function SettingsModal({
                             : "border-[var(--border)] hover:border-[var(--muted)]"
                         }`}
                         style={{
-                          background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
+                          background: `linear-gradient(135deg, ${theme.background} 0%, ${theme.surface2} 48%, ${theme.accent} 49%, ${theme.accent2} 100%)`,
                         }}
                         title={theme.label}
                       />

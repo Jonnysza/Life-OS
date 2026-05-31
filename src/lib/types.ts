@@ -93,6 +93,20 @@ export type FocusSession = {
 
 export type ThemePreset = "violet" | "blue" | "green" | "rose" | "amber";
 
+export type DashboardTheme = {
+  label: string;
+  background: string;
+  surface: string;
+  surface2: string;
+  border: string;
+  foreground: string;
+  muted: string;
+  accent: string;
+  accent2: string;
+  success: string;
+  danger: string;
+};
+
 export type Settings = {
   soundEnabled: boolean;
   themePreset?: ThemePreset | "custom";
@@ -100,15 +114,72 @@ export type Settings = {
   customAccent2?: string;
 };
 
-export const THEME_PRESETS: Record<
-  ThemePreset,
-  { label: string; accent: string; accent2: string }
-> = {
-  violet: { label: "Violet", accent: "#8b5cf6", accent2: "#6366f1" },
-  blue: { label: "Blue", accent: "#2563eb", accent2: "#06b6d4" },
-  green: { label: "Green", accent: "#10b981", accent2: "#84cc16" },
-  rose: { label: "Rose", accent: "#e11d48", accent2: "#f97316" },
-  amber: { label: "Amber", accent: "#d97706", accent2: "#facc15" },
+export const THEME_PRESETS: Record<ThemePreset, DashboardTheme> = {
+  violet: {
+    label: "Violet",
+    background: "#0a0a0f",
+    surface: "#12121a",
+    surface2: "#1a1a25",
+    border: "#26262f",
+    foreground: "#f0f0f5",
+    muted: "#8a8a99",
+    accent: "#8b5cf6",
+    accent2: "#6366f1",
+    success: "#10b981",
+    danger: "#f43f5e",
+  },
+  blue: {
+    label: "Blue",
+    background: "#071018",
+    surface: "#0d1722",
+    surface2: "#142234",
+    border: "#243449",
+    foreground: "#eef7ff",
+    muted: "#8aa2b8",
+    accent: "#2563eb",
+    accent2: "#06b6d4",
+    success: "#22c55e",
+    danger: "#f43f5e",
+  },
+  green: {
+    label: "Green",
+    background: "#07130f",
+    surface: "#0e1b17",
+    surface2: "#172821",
+    border: "#284038",
+    foreground: "#effaf5",
+    muted: "#8fa79b",
+    accent: "#10b981",
+    accent2: "#84cc16",
+    success: "#22c55e",
+    danger: "#fb7185",
+  },
+  rose: {
+    label: "Rose",
+    background: "#14090f",
+    surface: "#1e1118",
+    surface2: "#2b1822",
+    border: "#442738",
+    foreground: "#fff2f7",
+    muted: "#b193a1",
+    accent: "#e11d48",
+    accent2: "#f97316",
+    success: "#34d399",
+    danger: "#fb7185",
+  },
+  amber: {
+    label: "Amber",
+    background: "#12100a",
+    surface: "#1b1710",
+    surface2: "#282114",
+    border: "#40341f",
+    foreground: "#fff8eb",
+    muted: "#aa9a7c",
+    accent: "#d97706",
+    accent2: "#facc15",
+    success: "#22c55e",
+    danger: "#ef4444",
+  },
 };
 
 export type StickyNote = {

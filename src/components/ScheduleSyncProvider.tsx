@@ -28,7 +28,11 @@ export function ScheduleSyncProvider() {
     googleCalendarStatus()
       .then((status) => {
         googleConnectedRef.current =
-          status.configured && status.redis && status.connected && !status.needsReconnect;
+          status.configured &&
+          status.redis &&
+          Boolean(status.accountScoped) &&
+          status.connected &&
+          !status.needsReconnect;
       })
       .catch(() => {
         googleConnectedRef.current = false;

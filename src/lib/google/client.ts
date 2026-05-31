@@ -16,6 +16,8 @@ export type GoogleCalendarStatus = {
   configured: boolean;
   redis: boolean;
   connected: boolean;
+  ownerId?: string;
+  accountScoped?: boolean;
   needsReconnect?: boolean;
 };
 

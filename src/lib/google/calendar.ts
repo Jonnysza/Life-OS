@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import { redis, redisAvailable } from "@/lib/push/redis";
+import { resolveOwnerId } from "@/lib/auth/owner";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -42,13 +43,18 @@ type GoogleTokenRecord = {
 
 type OAuthStateRecord = {
   sessionId: string;
+  ownerId: string;
   returnTo: string;
   createdAt: number;
 };
 
 type EventMap = Record<string, { eventId: string; fingerprint: string }>;
 
-function tokenKey(sessionId: string) {
+function tokenKey(ownerId: string) {
+  return `${TOKEN_PREFIX}${ownerId}`;
+}
+
+function legacyTokenKey(sessionId: string) {
   return `${TOKEN_PREFIX}${sessionId}`;
 }
 
@@ -56,7 +62,11 @@ function stateKey(state: string) {
   return `${STATE_PREFIX}${state}`;
 }
 
-function mapKey(sessionId: string) {
+function mapKey(ownerId: string) {
+  return `${MAP_PREFIX}${ownerId}`;
+}
+
+function legacyMapKey(sessionId: string) {
   return `${MAP_PREFIX}${sessionId}`;
 }
 
@@ -79,6 +89,26 @@ function requireRedis() {
   return redis();
 }
 
+async function resolveCalendarOwner(sessionId: string) {
+  if (!sessionId) throw new Error("Missing session id.");
+  return resolveOwnerId(sessionId);
+}
+
+async function migrateLegacyCalendarData(sessionId: string, ownerId: string) {
+  const r = redis();
+  const currentToken = await r.get<GoogleTokenRecord>(tokenKey(ownerId));
+  if (!currentToken) {
+    const legacyToken = await r.get<GoogleTokenRecord>(legacyTokenKey(sessionId));
+    if (legacyToken) await r.set(tokenKey(ownerId), legacyToken);
+  }
+
+  const currentMap = await r.get<EventMap>(mapKey(ownerId));
+  if (!currentMap) {
+    const legacyMap = await r.get<EventMap>(legacyMapKey(sessionId));
+    if (legacyMap) await r.set(mapKey(ownerId), legacyMap);
+  }
+}
+
 function normalizeReturnTo(value: string | null | undefined, origin: string) {
   try {
     const url = new URL(value || "/", origin);
@@ -93,12 +123,16 @@ export async function getGoogleCalendarStatus(sessionId: string) {
   const configured = googleCalendarConfigured();
   const redisReady = redisAvailable();
   if (!sessionId || !redisReady) {
-    return { configured, redis: redisReady, connected: false };
+    return { configured, redis: redisReady, connected: false, accountScoped: false };
   }
-  const token = await redis().get<GoogleTokenRecord>(tokenKey(sessionId));
+  const ownerId = await resolveCalendarOwner(sessionId);
+  await migrateLegacyCalendarData(sessionId, ownerId);
+  const token = await redis().get<GoogleTokenRecord>(tokenKey(ownerId));
   return {
     configured,
     redis: redisReady,
+    ownerId,
+    accountScoped: ownerId.startsWith("acct:"),
     connected: Boolean(token?.refresh_token || token?.access_token),
     needsReconnect: Boolean(token && !token.refresh_token && token.expires_at <= Date.now()),
   };
@@ -114,11 +148,18 @@ export async function createGoogleCalendarAuthUrl(
     throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not configured.");
   }
   const r = requireRedis();
+  const ownerId = await resolveCalendarOwner(sessionId);
+  await migrateLegacyCalendarData(sessionId, ownerId);
   const { clientId, redirectUri } = getConfig(origin);
   const state = randomBytes(24).toString("hex");
   await r.set<OAuthStateRecord>(
     stateKey(state),
-    { sessionId, returnTo: normalizeReturnTo(returnTo, origin), createdAt: Date.now() },
+    {
+      sessionId,
+      ownerId,
+      returnTo: normalizeReturnTo(returnTo, origin),
+      createdAt: Date.now(),
+    },
     { ex: 10 * 60 }
   );
 
@@ -174,7 +215,9 @@ export async function completeGoogleCalendarOAuth(
   if (!stored) throw new Error("Google sign-in expired. Try connecting again.");
 
   const { clientId, clientSecret, redirectUri } = getConfig(origin);
-  const previous = await r.get<GoogleTokenRecord>(tokenKey(stored.sessionId));
+  const ownerId = stored.ownerId || (await resolveCalendarOwner(stored.sessionId));
+  await migrateLegacyCalendarData(stored.sessionId, ownerId);
+  const previous = await r.get<GoogleTokenRecord>(tokenKey(ownerId));
   const body = await exchangeToken(
     new URLSearchParams({
       client_id: clientId,
@@ -185,13 +228,13 @@ export async function completeGoogleCalendarOAuth(
     })
   );
 
-  await r.set(tokenKey(stored.sessionId), tokenFromResponse(body, previous));
+  await r.set(tokenKey(ownerId), tokenFromResponse(body, previous));
   await r.del(stateKey(state));
   return stored;
 }
 
 async function refreshGoogleToken(
-  sessionId: string,
+  ownerId: string,
   token: GoogleTokenRecord
 ): Promise<GoogleTokenRecord> {
   if (!token.refresh_token) {
@@ -207,33 +250,33 @@ async function refreshGoogleToken(
     })
   );
   const refreshed = tokenFromResponse(body, token);
-  await redis().set(tokenKey(sessionId), refreshed);
+  await redis().set(tokenKey(ownerId), refreshed);
   return refreshed;
 }
 
-async function accessTokenForSession(
-  sessionId: string,
+async function accessTokenForOwner(
+  ownerId: string,
   forceRefresh = false
 ): Promise<string> {
   if (!googleCalendarConfigured()) {
     throw new Error("Google Calendar OAuth is not configured.");
   }
   const r = requireRedis();
-  const token = await r.get<GoogleTokenRecord>(tokenKey(sessionId));
+  const token = await r.get<GoogleTokenRecord>(tokenKey(ownerId));
   if (!token) throw new Error("Google Calendar is not connected.");
   if (!forceRefresh && token.expires_at - 60_000 > Date.now()) {
     return token.access_token;
   }
-  return (await refreshGoogleToken(sessionId, token)).access_token;
+  return (await refreshGoogleToken(ownerId, token)).access_token;
 }
 
 async function calendarFetch(
-  sessionId: string,
+  ownerId: string,
   path: string,
   init: RequestInit = {},
   retry = true
 ): Promise<Response> {
-  const accessToken = await accessTokenForSession(sessionId);
+  const accessToken = await accessTokenForOwner(ownerId);
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${accessToken}`);
   if (init.body && !headers.has("content-type")) {
@@ -241,7 +284,7 @@ async function calendarFetch(
   }
   const res = await fetch(`${CALENDAR_API}${path}`, { ...init, headers });
   if (res.status === 401 && retry) {
-    const refreshed = await accessTokenForSession(sessionId, true);
+    const refreshed = await accessTokenForOwner(ownerId, true);
     headers.set("authorization", `Bearer ${refreshed}`);
     return fetch(`${CALENDAR_API}${path}`, { ...init, headers });
   }
@@ -284,23 +327,23 @@ function googleEventPayload(block: LifeOsCalendarBlock) {
   };
 }
 
-async function readEventMap(sessionId: string): Promise<EventMap> {
-  return (await redis().get<EventMap>(mapKey(sessionId))) ?? {};
+async function readEventMap(ownerId: string): Promise<EventMap> {
+  return (await redis().get<EventMap>(mapKey(ownerId))) ?? {};
 }
 
-async function writeEventMap(sessionId: string, map: EventMap) {
-  await redis().set(mapKey(sessionId), map);
+async function writeEventMap(ownerId: string, map: EventMap) {
+  await redis().set(mapKey(ownerId), map);
 }
 
 async function upsertGoogleEvent(
-  sessionId: string,
+  ownerId: string,
   block: LifeOsCalendarBlock,
   eventId?: string
 ) {
   const payload = googleEventPayload(block);
   if (eventId) {
     const patch = await calendarFetch(
-      sessionId,
+      ownerId,
       `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=none`,
       { method: "PATCH", body: JSON.stringify(payload) }
     );
@@ -312,7 +355,7 @@ async function upsertGoogleEvent(
   }
 
   const created = await calendarFetch(
-    sessionId,
+    ownerId,
     "/calendars/primary/events?sendUpdates=none",
     { method: "POST", body: JSON.stringify(payload) }
   );
@@ -323,9 +366,9 @@ async function upsertGoogleEvent(
   return { id: body.id };
 }
 
-async function deleteGoogleEvent(sessionId: string, eventId: string) {
+async function deleteGoogleEvent(ownerId: string, eventId: string) {
   const res = await calendarFetch(
-    sessionId,
+    ownerId,
     `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=none`,
     { method: "DELETE" }
   );
@@ -339,7 +382,9 @@ export async function syncLifeOsBlocksToGoogle(
   blocks: LifeOsCalendarBlock[]
 ) {
   requireRedis();
-  const map = await readEventMap(sessionId);
+  const ownerId = await resolveCalendarOwner(sessionId);
+  await migrateLegacyCalendarData(sessionId, ownerId);
+  const map = await readEventMap(ownerId);
   const incomingIds = new Set(blocks.map((block) => block.todoId));
   let created = 0;
   let updated = 0;
@@ -350,7 +395,7 @@ export async function syncLifeOsBlocksToGoogle(
   for (const [todoId, entry] of Object.entries(map)) {
     if (incomingIds.has(todoId)) continue;
     try {
-      await deleteGoogleEvent(sessionId, entry.eventId);
+      await deleteGoogleEvent(ownerId, entry.eventId);
       delete map[todoId];
       deleted++;
     } catch (error) {
@@ -366,7 +411,7 @@ export async function syncLifeOsBlocksToGoogle(
       continue;
     }
     try {
-      const result = await upsertGoogleEvent(sessionId, block, existing?.eventId);
+      const result = await upsertGoogleEvent(ownerId, block, existing?.eventId);
       map[block.todoId] = { eventId: result.id, fingerprint };
       if (existing) updated++;
       else created++;
@@ -375,7 +420,7 @@ export async function syncLifeOsBlocksToGoogle(
     }
   }
 
-  await writeEventMap(sessionId, map);
+  await writeEventMap(ownerId, map);
   return { created, updated, deleted, skipped, errors };
 }
 
@@ -390,6 +435,9 @@ function parseGoogleTime(value?: string) {
 }
 
 export async function importGoogleCalendarEvents(sessionId: string, days = 14) {
+  requireRedis();
+  const ownerId = await resolveCalendarOwner(sessionId);
+  await migrateLegacyCalendarData(sessionId, ownerId);
   const timeMin = new Date().toISOString();
   const timeMax = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
   const params = new URLSearchParams({
@@ -399,7 +447,7 @@ export async function importGoogleCalendarEvents(sessionId: string, days = 14) {
     timeMax,
     maxResults: "100",
   });
-  const res = await calendarFetch(sessionId, `/calendars/primary/events?${params}`);
+  const res = await calendarFetch(ownerId, `/calendars/primary/events?${params}`);
   const body = (await res.json().catch(() => ({}))) as {
     items?: {
       id?: string;
@@ -443,12 +491,15 @@ export async function importGoogleCalendarEvents(sessionId: string, days = 14) {
 export async function disconnectGoogleCalendar(sessionId: string) {
   if (!redisAvailable()) return;
   const r = redis();
-  const token = await r.get<GoogleTokenRecord>(tokenKey(sessionId));
+  const ownerId = await resolveCalendarOwner(sessionId);
+  const token = await r.get<GoogleTokenRecord>(tokenKey(ownerId));
   if (token?.access_token) {
     await fetch(`${REVOKE_URL}?token=${encodeURIComponent(token.access_token)}`, {
       method: "POST",
     }).catch(() => undefined);
   }
-  await r.del(tokenKey(sessionId));
-  await r.del(mapKey(sessionId));
+  await r.del(tokenKey(ownerId));
+  await r.del(mapKey(ownerId));
+  await r.del(legacyTokenKey(sessionId));
+  await r.del(legacyMapKey(sessionId));
 }

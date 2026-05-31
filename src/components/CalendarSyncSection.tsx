@@ -214,8 +214,9 @@ export function CalendarSyncSection() {
     }
   }
 
-  const connected = Boolean(status?.connected && !status?.needsReconnect);
-  const canConnect = Boolean(status?.configured && status?.redis);
+  const accountScoped = Boolean(status?.accountScoped);
+  const connected = Boolean(status?.connected && !status?.needsReconnect && accountScoped);
+  const canConnect = Boolean(status?.configured && status?.redis && accountScoped);
 
   return (
     <section>
@@ -294,15 +295,21 @@ export function CalendarSyncSection() {
             <span
               className={`ml-auto text-[10px] ${connected ? "text-[var(--success)]" : "text-[var(--muted)]"}`}
             >
-              {connected ? "connected" : canConnect ? "ready" : "not configured"}
+              {connected
+                ? "account connected"
+                : canConnect
+                  ? "ready"
+                  : status?.configured && status?.redis
+                    ? "sign in first"
+                    : "not configured"}
             </span>
           </div>
 
           {!canConnect && (
             <p className="text-[11px] text-[var(--muted)] leading-relaxed mb-2">
-              Direct Google sync needs Google OAuth keys in Vercel. Until then,
-              the live feed above still keeps your timed Life OS schedule visible
-              across devices in Google Calendar.
+              {status?.configured && status?.redis
+                ? "Sign into Account & sync first, then connect Google Calendar. That makes the Calendar connection account-wide across phone and desktop."
+                : "Direct Google sync needs Google OAuth keys in Vercel. Until then, the live feed above still keeps your timed Life OS schedule visible across devices in Google Calendar."}
             </p>
           )}
           {connected && (
