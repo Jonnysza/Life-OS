@@ -22,7 +22,6 @@ const required = [
   "ANTHROPIC_API_KEY",
   "NEXT_PUBLIC_VAPID_PUBLIC_KEY",
   "VAPID_PRIVATE_KEY",
-  "VAPID_SUBJECT",
   "KV_REST_API_URL",
   "KV_REST_API_TOKEN",
 ];
@@ -38,9 +37,9 @@ for (const key of required) {
   }
 }
 
-if (value("VAPID_SUBJECT") && !value("VAPID_SUBJECT").startsWith("mailto:")) {
-  console.error("invalid: VAPID_SUBJECT must start with mailto:");
-  failed = true;
+const vapidSubject = value("VAPID_SUBJECT").replace(/^"|"$/g, "").trim();
+if (vapidSubject && !vapidSubject.startsWith("mailto:") && !/^https?:\/\//.test(vapidSubject)) {
+  console.warn("warn: VAPID_SUBJECT should start with mailto: or https://; app will use a safe default");
 }
 
 if (!value("CRON_SECRET")) {

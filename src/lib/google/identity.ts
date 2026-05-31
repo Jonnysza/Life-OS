@@ -5,7 +5,9 @@ import { redis, redisAvailable } from "@/lib/push/redis";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
-const SCOPE = "openid email profile";
+const CALENDAR_TOKEN_PREFIX = "google:calendar:token:";
+const SCOPE =
+  "openid email profile https://www.googleapis.com/auth/calendar.events";
 
 export type Identity = {
   googleUserId: string;
@@ -13,6 +15,14 @@ export type Identity = {
   name?: string;
   picture?: string;
   linkedAt: number;
+};
+
+type GoogleTokenRecord = {
+  access_token: string;
+  refresh_token?: string;
+  expires_at: number;
+  scope?: string;
+  token_type?: string;
 };
 
 type OAuthStateRecord = {
@@ -51,6 +61,10 @@ function stateKey(state: string) {
   return `auth:oauthstate:${state}`;
 }
 
+function calendarTokenKey(googleUserId: string) {
+  return `${CALENDAR_TOKEN_PREFIX}acct:${googleUserId}`;
+}
+
 function normalizeReturnTo(value: string | null | undefined, origin: string) {
   try {
     const url = new URL(value || "/", origin);
@@ -84,7 +98,9 @@ export async function createLoginUrl(
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", SCOPE);
+  url.searchParams.set("access_type", "offline");
   url.searchParams.set("include_granted_scopes", "true");
+  url.searchParams.set("prompt", "consent");
   url.searchParams.set("state", state);
   return url.toString();
 }
@@ -114,7 +130,13 @@ export async function handleCallback(
   if (!tokenRes.ok) {
     throw new Error("Google token exchange failed.");
   }
-  const token = (await tokenRes.json()) as { access_token?: string };
+  const token = (await tokenRes.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+    token_type?: string;
+  };
   if (!token.access_token) throw new Error("No access token from Google.");
 
   const userRes = await fetch(USERINFO_URL, {
@@ -138,6 +160,18 @@ export async function handleCallback(
   await r.set<Identity>(sessionKey(stateRecord.sessionId), identity, {
     ex: 60 * 60 * 24 * 365,
   });
+
+  const previousCalendarToken = await r.get<GoogleTokenRecord>(
+    calendarTokenKey(profile.sub)
+  );
+  const calendarToken: GoogleTokenRecord = {
+    access_token: token.access_token,
+    refresh_token: token.refresh_token ?? previousCalendarToken?.refresh_token,
+    expires_at: Date.now() + Number(token.expires_in ?? 3600) * 1000,
+    scope: token.scope ?? previousCalendarToken?.scope,
+    token_type: token.token_type ?? previousCalendarToken?.token_type,
+  };
+  await r.set<GoogleTokenRecord>(calendarTokenKey(profile.sub), calendarToken);
 
   return { returnTo: stateRecord.returnTo };
 }

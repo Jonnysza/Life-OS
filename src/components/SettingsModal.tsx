@@ -17,9 +17,7 @@ import { useStore } from "@/lib/store";
 import { THEME_PRESETS, type ThemePreset } from "@/lib/types";
 import { patternLabel } from "@/lib/recurrence";
 import { toDateKey } from "@/lib/utils";
-import { NotificationsSection } from "./NotificationsSection";
-import { CalendarSyncSection } from "./CalendarSyncSection";
-import { AccountSection } from "./AccountSection";
+import { ConnectedSystemsSection } from "./ConnectedSystemsSection";
 import { DiagnosticsSection } from "./DiagnosticsSection";
 
 const COLOR_PALETTE = [
@@ -144,9 +142,7 @@ export function SettingsModal({
             </header>
 
             <div className="p-5 space-y-6">
-              <AccountSection />
-              <NotificationsSection />
-              <CalendarSyncSection />
+              <ConnectedSystemsSection />
               <DiagnosticsSection />
 
               <section>
