@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   addDays,
@@ -30,6 +30,8 @@ import {
   Sparkles,
   Target,
   Trash2,
+  Undo2,
+  X,
 } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import {
@@ -52,8 +54,16 @@ import {
 } from "@/lib/push/client";
 
 type ComposerKind = "task" | "habit" | "event";
-type HabitFilter = "needed" | "all" | "done";
+type DayActionFilter = "needed" | "all" | "done";
 type MobileTab = "today" | "schedule" | "goals" | "notes";
+type WorkspaceMode = "today" | "schedule";
+
+const START_HOUR = 5;
+const END_HOUR = 24;
+const HOUR_PX = 58;
+const PX_PER_MIN = HOUR_PX / 60;
+const TOTAL_HEIGHT = (END_HOUR - START_HOUR) * HOUR_PX;
+const SNAP_MIN = 15;
 
 type DayItem =
   | {
@@ -90,6 +100,24 @@ type DayItem =
       source: CalEvent;
     };
 
+type TimedDayItem = Extract<DayItem, { kind: "task" | "event" }> & {
+  time: string;
+};
+
+type TimelineBlock = {
+  item: TimedDayItem;
+  time: string;
+  durationMinutes: number;
+  columnIndex: number;
+  columnCount: number;
+};
+
+type UndoCompletion = {
+  kind: "task" | "habit";
+  id: string;
+  title: string;
+};
+
 function prettyTime(time?: string) {
   if (!time) return "Anytime";
   const [h, m] = time.split(":").map(Number);
@@ -102,6 +130,74 @@ function minutesFor(time?: string) {
   if (!time) return Number.POSITIVE_INFINITY;
   const [h, m] = time.split(":").map(Number);
   return h * 60 + (m || 0);
+}
+
+function timeFromMinutes(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function snapMinutes(minutes: number) {
+  return Math.round(minutes / SNAP_MIN) * SNAP_MIN;
+}
+
+function minutesToY(minutes: number) {
+  return (minutes - START_HOUR * 60) * PX_PER_MIN;
+}
+
+function yToMinutes(y: number) {
+  return y / PX_PER_MIN + START_HOUR * 60;
+}
+
+function hasTime(item: DayItem): item is TimedDayItem {
+  return (item.kind === "task" || item.kind === "event") && Boolean(item.time);
+}
+
+function layoutTimelineBlocks(items: TimedDayItem[]): TimelineBlock[] {
+  const sorted = [...items].sort((a, b) => {
+    const byStart = minutesFor(a.time) - minutesFor(b.time);
+    return byStart || a.title.localeCompare(b.title);
+  });
+  const clusters: TimedDayItem[][] = [];
+  let cluster: TimedDayItem[] = [];
+  let clusterEnd = 0;
+
+  for (const item of sorted) {
+    const start = minutesFor(item.time);
+    const duration = item.durationMinutes ?? (item.kind === "event" ? 60 : 30);
+    const end = start + duration;
+    if (cluster.length > 0 && start >= clusterEnd) {
+      clusters.push(cluster);
+      cluster = [];
+      clusterEnd = 0;
+    }
+    cluster.push(item);
+    clusterEnd = Math.max(clusterEnd, end);
+  }
+  if (cluster.length > 0) clusters.push(cluster);
+
+  const blocks: TimelineBlock[] = [];
+  for (const group of clusters) {
+    const columnEnds: number[] = [];
+    const placed = group.map((item) => {
+      const start = minutesFor(item.time);
+      const duration = item.durationMinutes ?? (item.kind === "event" ? 60 : 30);
+      const end = start + duration;
+      let columnIndex = columnEnds.findIndex((value) => value <= start);
+      if (columnIndex === -1) {
+        columnIndex = columnEnds.length;
+        columnEnds.push(end);
+      } else {
+        columnEnds[columnIndex] = end;
+      }
+      return { item, time: item.time, durationMinutes: duration, columnIndex };
+    });
+    const columnCount = Math.max(1, columnEnds.length);
+    blocks.push(...placed.map((block) => ({ ...block, columnCount })));
+  }
+
+  return blocks.sort((a, b) => minutesFor(a.time) - minutesFor(b.time));
 }
 
 function nextQuarterTime() {
@@ -533,6 +629,500 @@ function SchedulePreview({
   );
 }
 
+function DayTimeline({
+  selectedDate,
+  timedItems,
+  unscheduledItems,
+  onToggle,
+  onDelete,
+  onScheduleTask,
+  onUpdateTask,
+  onUpdateEvent,
+  onAddTask,
+}: {
+  selectedDate: string;
+  timedItems: TimedDayItem[];
+  unscheduledItems: DayItem[];
+  onToggle: (item: DayItem) => void;
+  onDelete: (item: DayItem) => void;
+  onScheduleTask: (id: string, time: string) => void;
+  onUpdateTask: (id: string, patch: Partial<Todo>) => void;
+  onUpdateEvent: (id: string, patch: Partial<CalEvent>) => void;
+  onAddTask: (title: string, time: string, durationMinutes: number) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState<TimelineBlock | null>(null);
+  const [addingAt, setAddingAt] = useState<{
+    y: number;
+    minutes: number;
+  } | null>(null);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDuration, setNewDuration] = useState(30);
+  const [nowMinutes, setNowMinutes] = useState<number | null>(null);
+  const autoScrolledDate = useRef<string | null>(null);
+
+  const blocks = useMemo(() => layoutTimelineBlocks(timedItems), [timedItems]);
+
+  useEffect(() => {
+    setEditing(null);
+    setAddingAt(null);
+    autoScrolledDate.current = null;
+  }, [selectedDate]);
+
+  useEffect(() => {
+    const tick = () => {
+      const d = new Date();
+      setNowMinutes(
+        toDateKey(d) === selectedDate ? d.getHours() * 60 + d.getMinutes() : null
+      );
+    };
+    tick();
+    const i = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(i);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (
+      nowMinutes == null ||
+      !scrollRef.current ||
+      autoScrolledDate.current === selectedDate
+    ) {
+      return;
+    }
+    scrollRef.current.scrollTo({
+      top: Math.max(0, minutesToY(nowMinutes) - 100),
+      behavior: "smooth",
+    });
+    autoScrolledDate.current = selectedDate;
+  }, [nowMinutes, selectedDate]);
+
+  function forceSync() {
+    window.dispatchEvent(new Event("life-os:force-schedule-sync"));
+  }
+
+  function patchBlock(block: TimelineBlock, patch: Partial<Todo> & Partial<CalEvent>) {
+    if (block.item.kind === "task") onUpdateTask(block.item.id, patch);
+    else onUpdateEvent(block.item.id, patch);
+    setEditing((current) =>
+      current?.item.id === block.item.id
+        ? {
+            ...current,
+            time: patch.time ?? current.time,
+            durationMinutes:
+              patch.durationMinutes ?? current.durationMinutes,
+            item: {
+              ...current.item,
+              ...patch,
+            } as TimedDayItem,
+          }
+        : current
+    );
+    forceSync();
+  }
+
+  function applyDrag(block: TimelineBlock, deltaY: number) {
+    const next = snapMinutes(minutesFor(block.time) + deltaY / PX_PER_MIN);
+    const clamped = Math.max(
+      START_HOUR * 60,
+      Math.min((END_HOUR - 0.25) * 60, next)
+    );
+    patchBlock(block, { time: timeFromMinutes(clamped) });
+  }
+
+  function applyResize(block: TimelineBlock, deltaY: number) {
+    const next = snapMinutes(block.durationMinutes + deltaY / PX_PER_MIN);
+    const clamped = Math.max(SNAP_MIN, Math.min(8 * 60, next));
+    patchBlock(block, { durationMinutes: clamped });
+  }
+
+  function handleEmptyClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target !== e.currentTarget) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const minutes = snapMinutes(yToMinutes(y));
+    setAddingAt({ y: minutesToY(minutes), minutes });
+    setNewTitle("");
+    setNewDuration(30);
+  }
+
+  function submitNewBlock() {
+    if (!addingAt || !newTitle.trim()) return;
+    onAddTask(newTitle.trim(), timeFromMinutes(addingAt.minutes), newDuration);
+    setAddingAt(null);
+    setNewTitle("");
+    forceSync();
+  }
+
+  function scheduleNext(item: DayItem) {
+    if (item.kind !== "task") return;
+    const now = new Date();
+    const minutes =
+      toDateKey(now) === selectedDate
+        ? snapMinutes(now.getHours() * 60 + now.getMinutes())
+        : 9 * 60;
+    const clamped = Math.max(START_HOUR * 60, Math.min(END_HOUR * 60 - 15, minutes));
+    onScheduleTask(item.id, timeFromMinutes(clamped));
+    forceSync();
+  }
+
+  const hours = [];
+  for (let h = START_HOUR; h < END_HOUR; h++) hours.push(h);
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)]/55 p-3 min-h-[560px] flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-[var(--muted)]">
+            <CalendarDays size={14} />
+            Schedule
+          </h2>
+          <p className="text-xs text-[var(--muted)] mt-0.5">
+            {timedItems.length} timed blocks - {unscheduledItems.length} unscheduled
+          </p>
+        </div>
+        <span className="hidden sm:inline text-[10px] text-[var(--muted)]">
+          Click the timeline to add a block.
+        </span>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_180px] min-h-0">
+        <div
+          ref={scrollRef}
+          className="min-h-[520px] max-h-[70vh] overflow-y-auto scroll-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]/65"
+        >
+          <div
+            onClick={handleEmptyClick}
+            className="relative ml-12 mr-2"
+            style={{ height: TOTAL_HEIGHT }}
+          >
+            {hours.map((h) => (
+              <div
+                key={h}
+                className="absolute left-0 right-0 border-t border-[var(--border)] pointer-events-none"
+                style={{ top: (h - START_HOUR) * HOUR_PX }}
+              >
+                <span className="absolute -left-12 -top-2 text-[10px] text-[var(--muted)] font-mono w-10 text-right">
+                  {h < 12 ? `${h} AM` : h === 12 ? "12 PM" : `${h - 12} PM`}
+                </span>
+              </div>
+            ))}
+
+            {nowMinutes != null &&
+              nowMinutes >= START_HOUR * 60 &&
+              nowMinutes < END_HOUR * 60 && (
+                <div
+                  className="absolute left-0 right-0 z-20 pointer-events-none"
+                  style={{ top: minutesToY(nowMinutes) }}
+                >
+                  <div className="absolute -left-1.5 -top-1.5 w-3 h-3 rounded-full bg-[var(--danger)] shadow-lg shadow-[var(--danger)]/50 animate-pulse" />
+                  <div className="h-px bg-[var(--danger)]/80" />
+                </div>
+              )}
+
+            <AnimatePresence initial={false}>
+              {blocks.map((block) => {
+                const top = minutesToY(minutesFor(block.time));
+                const columnWidth = 100 / block.columnCount;
+                return (
+                  <motion.div
+                    key={`${block.item.kind}-${block.item.id}`}
+                    layout
+                    drag="y"
+                    dragMomentum={false}
+                    dragElastic={0}
+                    onDragEnd={(_, info) => applyDrag(block, info.offset.y)}
+                    initial={{ opacity: 0, scale: 0.97 }}
+                    animate={{
+                      opacity: 1,
+                      scale: 1,
+                      top,
+                      height: Math.max(18, block.durationMinutes * PX_PER_MIN),
+                    }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    whileDrag={{ scale: 1.025, zIndex: 30 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditing(block);
+                    }}
+                    className="absolute rounded-lg overflow-hidden cursor-grab active:cursor-grabbing group"
+                    style={{
+                      left: `calc(${block.columnIndex * columnWidth}% + 4px)`,
+                      width: `calc(${columnWidth}% - 8px)`,
+                      background: `linear-gradient(135deg, ${block.item.color}E6, ${block.item.color}A8)`,
+                      boxShadow: `0 8px 22px -12px ${block.item.color}`,
+                    }}
+                  >
+                    <div className="absolute inset-0 p-2 text-white pointer-events-none">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {block.item.kind === "task" && (
+                          <span
+                            className={`w-3 h-3 rounded-full border flex-shrink-0 ${
+                              block.item.done
+                                ? "bg-white border-white"
+                                : "border-white/75"
+                            }`}
+                          />
+                        )}
+                        <span
+                          className={`text-xs font-semibold truncate ${
+                            block.item.done ? "line-through opacity-70" : ""
+                          }`}
+                        >
+                          {block.item.title}
+                        </span>
+                      </div>
+                      {block.durationMinutes >= 35 && (
+                        <p className="text-[10px] opacity-85 mt-0.5 truncate">
+                          {prettyTime(block.time)} - {block.durationMinutes}m
+                          {block.item.kind === "task" && block.item.goalTitle
+                            ? ` - ${block.item.goalTitle}`
+                            : ""}
+                        </p>
+                      )}
+                    </div>
+                    <motion.div
+                      drag="y"
+                      dragMomentum={false}
+                      dragElastic={0}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      onDragEnd={(_, info) => applyResize(block, info.offset.y)}
+                      className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize opacity-0 group-hover:opacity-100 transition"
+                    >
+                      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-white/70" />
+                    </motion.div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+
+            {addingAt && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute left-1 right-1 z-30 rounded-lg bg-[var(--surface)] border border-[var(--accent)] shadow-xl p-2"
+                style={{
+                  top: addingAt.y,
+                  minHeight: Math.max(42, newDuration * PX_PER_MIN),
+                }}
+              >
+                <input
+                  autoFocus
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submitNewBlock();
+                    if (e.key === "Escape") setAddingAt(null);
+                  }}
+                  placeholder={`Task at ${prettyTime(timeFromMinutes(addingAt.minutes))}`}
+                  className="w-full bg-transparent text-sm placeholder:text-[var(--muted)]"
+                />
+                <div className="flex items-center gap-1 mt-2 text-xs flex-wrap">
+                  {[15, 30, 45, 60, 90, 120].map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setNewDuration(m)}
+                      className={`px-1.5 py-0.5 rounded ${
+                        newDuration === m
+                          ? "bg-[var(--accent)] text-white"
+                          : "text-[var(--muted)] hover:bg-[var(--surface-2)]"
+                      }`}
+                    >
+                      {m}m
+                    </button>
+                  ))}
+                  <button
+                    onClick={submitNewBlock}
+                    className="ml-auto px-2 py-0.5 rounded bg-[var(--accent)] text-white"
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => setAddingAt(null)}
+                    className="px-1 text-[var(--muted)]"
+                    title="Cancel"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </div>
+
+        <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)]/65 p-2 flex flex-col gap-2 xl:max-h-[70vh]">
+          <h3 className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-semibold">
+            Unscheduled
+          </h3>
+          <div className="flex-1 min-h-0 overflow-y-auto scroll-hidden space-y-1.5">
+            {unscheduledItems.length === 0 ? (
+              <p className="text-xs text-[var(--muted)] py-3">
+                Everything important has a place.
+              </p>
+            ) : (
+              unscheduledItems.map((item) => (
+                <div
+                  key={`${item.kind}-${item.id}`}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)]/75 p-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: item.color }}
+                    />
+                    <span
+                      className={`text-xs font-medium truncate flex-1 ${
+                        item.done ? "line-through opacity-60" : ""
+                      }`}
+                    >
+                      {item.kind === "habit"
+                        ? `${item.source.emoji} ${item.title}`
+                        : item.title}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    {item.kind === "task" ? (
+                      <button
+                        onClick={() => scheduleNext(item)}
+                        className="text-[10px] rounded px-1.5 py-0.5 bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--border)]"
+                      >
+                        schedule next
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => onToggle(item)}
+                        className="text-[10px] rounded px-1.5 py-0.5 bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--border)]"
+                      >
+                        {item.done ? "uncheck" : "check off"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onDelete(item)}
+                      className="ml-auto text-[10px] rounded px-1.5 py-0.5 text-[var(--muted)] hover:text-[var(--danger)]"
+                    >
+                      delete
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {editing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setEditing(null)}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm glass rounded-2xl border border-[var(--border)] p-5 shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <span
+                  className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold"
+                  style={{
+                    background: `${editing.item.color}33`,
+                    color: editing.item.color,
+                  }}
+                >
+                  {editing.item.kind}
+                </span>
+                <button
+                  onClick={() => setEditing(null)}
+                  className="w-7 h-7 rounded-md hover:bg-[var(--surface-2)] grid place-items-center"
+                  title="Close"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+
+              <input
+                value={editing.item.title}
+                onChange={(e) =>
+                  setEditing({
+                    ...editing,
+                    item: { ...editing.item, title: e.target.value },
+                  })
+                }
+                onBlur={() =>
+                  patchBlock(editing, { title: editing.item.title.trim() })
+                }
+                className="w-full bg-transparent text-lg font-semibold mb-4"
+              />
+
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <label className="text-xs text-[var(--muted)]">
+                  Time
+                  <input
+                    type="time"
+                    value={editing.time}
+                    onChange={(e) =>
+                      patchBlock(editing, { time: e.target.value })
+                    }
+                    className="mt-1 w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-md p-2 text-sm text-[var(--foreground)]"
+                  />
+                </label>
+                <label className="text-xs text-[var(--muted)]">
+                  Duration
+                  <select
+                    value={editing.durationMinutes}
+                    onChange={(e) =>
+                      patchBlock(editing, {
+                        durationMinutes: Number(e.target.value),
+                      })
+                    }
+                    className="mt-1 w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-md p-2 text-sm text-[var(--foreground)]"
+                  >
+                    {[15, 30, 45, 60, 90, 120, 180, 240].map((m) => (
+                      <option key={m} value={m}>
+                        {formatDuration(m)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {editing.item.kind === "task" && (
+                  <button
+                    onClick={() => {
+                      onToggle(editing.item);
+                      setEditing(null);
+                    }}
+                    className="flex-1 py-2 rounded-lg bg-[var(--success)] text-white text-sm font-medium"
+                  >
+                    {editing.item.done ? "Mark not done" : "Mark done"}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    onDelete(editing.item);
+                    setEditing(null);
+                    forceSync();
+                  }}
+                  className="px-3 py-2 rounded-lg bg-[var(--surface-2)] hover:bg-[var(--danger)]/20 text-[var(--danger)] flex items-center gap-1.5 text-sm"
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function DayCockpit() {
   const selectedDate = useStore((s) => s.selectedDate);
   const setSelectedDate = useStore((s) => s.setSelectedDate);
@@ -546,12 +1136,14 @@ export function DayCockpit() {
   const note = useNoteFor(selectedDate);
 
   const addTodo = useStore((s) => s.addTodo);
+  const updateTodo = useStore((s) => s.updateTodo);
   const deleteTodo = useStore((s) => s.deleteTodo);
   const toggleTodo = useStore((s) => s.toggleTodo);
   const addHabit = useStore((s) => s.addHabit);
   const deleteHabit = useStore((s) => s.deleteHabit);
   const toggleHabit = useStore((s) => s.toggleHabit);
   const addEvent = useStore((s) => s.addEvent);
+  const updateEvent = useStore((s) => s.updateEvent);
   const deleteEvent = useStore((s) => s.deleteEvent);
   const upsertNote = useStore((s) => s.upsertNote);
   const incrementGoal = useStore((s) => s.incrementGoal);
@@ -562,11 +1154,15 @@ export function DayCockpit() {
   const [time, setTime] = useState("");
   const [duration, setDuration] = useState(30);
   const [goalId, setGoalId] = useState("");
-  const [habitFilter, setHabitFilter] = useState<HabitFilter>("needed");
+  const [dayFilter, setDayFilter] = useState<DayActionFilter>("needed");
   const [search, setSearch] = useState("");
   const [mobileTab, setMobileTab] = useState<MobileTab>("today");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("today");
   const [serverArmed, setServerArmed] = useState<number | null>(null);
   const [noteDraft, setNoteDraft] = useState(note?.content ?? "");
+  const [undoCompletion, setUndoCompletion] = useState<UndoCompletion | null>(
+    null
+  );
 
   useEffect(() => {
     setNoteDraft(note?.content ?? "");
@@ -586,6 +1182,12 @@ export function DayCockpit() {
     window.addEventListener("life-os:schedule-sync", onSync);
     return () => window.removeEventListener("life-os:schedule-sync", onSync);
   }, []);
+
+  useEffect(() => {
+    if (!undoCompletion) return;
+    const timer = window.setTimeout(() => setUndoCompletion(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [undoCompletion]);
 
   const checkKeys = useMemo(
     () => new Set(habitChecks.map((c) => `${c.habitId}:${c.date}`)),
@@ -647,19 +1249,40 @@ export function DayCockpit() {
   const timedItems = useMemo(
     () =>
       dayItems
-        .filter((item) => item.time)
+        .filter(hasTime)
         .sort((a, b) => minutesFor(a.time) - minutesFor(b.time)),
     [dayItems]
   );
 
-  const checklistItems = useMemo(() => {
+  const searchedItems = useMemo(() => {
     const text = search.trim().toLowerCase();
     return dayItems
+      .filter((item) => !text || item.title.toLowerCase().includes(text));
+  }, [dayItems, search]);
+
+  const filterCounts = useMemo(
+    () => ({
+      needed: searchedItems.filter(
+        (item) =>
+          (item.kind === "task" || item.kind === "habit") && !item.done
+      ).length,
+      all: searchedItems.length,
+      done: searchedItems.filter(
+        (item) =>
+          (item.kind === "task" || item.kind === "habit") && item.done
+      ).length,
+    }),
+    [searchedItems]
+  );
+
+  const checklistItems = useMemo(() => {
+    return searchedItems
       .filter((item) => {
-        if (text && !item.title.toLowerCase().includes(text)) return false;
-        if (item.kind === "habit") {
-          if (habitFilter === "needed") return !item.done;
-          if (habitFilter === "done") return item.done;
+        if (dayFilter === "needed") {
+          return (item.kind === "task" || item.kind === "habit") && !item.done;
+        }
+        if (dayFilter === "done") {
+          return (item.kind === "task" || item.kind === "habit") && item.done;
         }
         return true;
       })
@@ -670,7 +1293,24 @@ export function DayCockpit() {
         if (Number.isFinite(byTime) && byTime !== 0) return byTime;
         return a.title.localeCompare(b.title);
       });
-  }, [dayItems, habitFilter, search]);
+  }, [dayFilter, searchedItems]);
+
+  const scheduleContextItems = useMemo(
+    () => timedItems.filter((item) => item.kind === "event").slice(0, 4),
+    [timedItems]
+  );
+
+  const unscheduledItems = useMemo(
+    () =>
+      dayItems
+        .filter(
+          (item) =>
+            ((item.kind === "task" && !item.time) || item.kind === "habit") &&
+            !item.done
+        )
+        .sort((a, b) => a.title.localeCompare(b.title)),
+    [dayItems]
+  );
 
   const activity = useMemo(() => {
     const map = new Map<
@@ -761,15 +1401,50 @@ export function DayCockpit() {
     if (item.kind === "task") {
       const wasDone = item.done;
       toggleTodo(item.id);
+      if (!wasDone) {
+        setUndoCompletion({ kind: "task", id: item.id, title: item.title });
+      } else if (undoCompletion?.id === item.id) {
+        setUndoCompletion(null);
+      }
+      if (item.time) window.dispatchEvent(new Event("life-os:force-schedule-sync"));
       if (!wasDone && soundEnabled) soundCheck();
       if (!wasDone) celebrate(item.color);
     }
     if (item.kind === "habit") {
       const wasDone = item.done;
       toggleHabit(item.id, selectedDate);
+      if (!wasDone) {
+        setUndoCompletion({ kind: "habit", id: item.id, title: item.title });
+      } else if (undoCompletion?.id === item.id) {
+        setUndoCompletion(null);
+      }
       if (!wasDone && soundEnabled) soundCheck();
       if (!wasDone) celebrate(item.color);
     }
+  }
+
+  function undoLastCompletion() {
+    if (!undoCompletion) return;
+    if (undoCompletion.kind === "task") {
+      const current = useStore
+        .getState()
+        .todos.find((todo) => todo.id === undoCompletion.id);
+      if (current?.done) {
+        toggleTodo(undoCompletion.id);
+        if (current.time) {
+          window.dispatchEvent(new Event("life-os:force-schedule-sync"));
+        }
+      }
+    } else {
+      const checked = useStore
+        .getState()
+        .habitChecks.some(
+          (check) =>
+            check.habitId === undoCompletion.id && check.date === selectedDate
+        );
+      if (checked) toggleHabit(undoCompletion.id, selectedDate);
+    }
+    setUndoCompletion(null);
   }
 
   function completeVisible() {
@@ -784,6 +1459,26 @@ export function DayCockpit() {
     if (item.kind === "task") deleteTodo(item.id);
     if (item.kind === "habit") deleteHabit(item.id);
     if (item.kind === "event") deleteEvent(item.id);
+    if (item.kind !== "habit") {
+      window.dispatchEvent(new Event("life-os:force-schedule-sync"));
+    }
+  }
+
+  function scheduleTask(id: string, scheduledTime: string) {
+    updateTodo(id, { time: scheduledTime, durationMinutes: 30 });
+  }
+
+  function addTimelineTask(
+    taskTitle: string,
+    scheduledTime: string,
+    durationMinutes: number
+  ) {
+    addTodo({
+      title: taskTitle,
+      date: selectedDate,
+      time: scheduledTime,
+      durationMinutes,
+    });
   }
 
   const selectedDay = fromDateKey(selectedDate);
@@ -945,6 +1640,28 @@ export function DayCockpit() {
               )}
             </div>
 
+            <div className="hidden lg:flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)]/55 p-2">
+              <div className="flex p-0.5 rounded-lg bg-[var(--surface)] border border-[var(--border)]">
+                {(["today", "schedule"] as WorkspaceMode[]).map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => setWorkspaceMode(value)}
+                    className={`px-3 py-1.5 rounded-md text-xs capitalize ${
+                      workspaceMode === value
+                        ? "bg-[var(--accent)] text-white"
+                        : "text-[var(--muted)]"
+                    }`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-[var(--muted)]">
+                One day, two ways to drive it.
+              </span>
+            </div>
+
+            {workspaceMode === "today" ? (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)]/55 p-3 min-h-[460px] flex flex-col">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <div>
@@ -975,14 +1692,17 @@ export function DayCockpit() {
                     ].map(([value, label]) => (
                       <button
                         key={value}
-                        onClick={() => setHabitFilter(value as HabitFilter)}
-                        className={`px-2 py-0.5 rounded text-[11px] ${
-                          habitFilter === value
+                        onClick={() => setDayFilter(value as DayActionFilter)}
+                        className={`px-2 py-0.5 rounded text-[11px] inline-flex items-center gap-1 ${
+                          dayFilter === value
                             ? "bg-[var(--surface-2)] text-[var(--foreground)]"
                             : "text-[var(--muted)]"
                         }`}
                       >
                         {label}
+                        <span className="opacity-70">
+                          {filterCounts[value as DayActionFilter]}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -994,6 +1714,57 @@ export function DayCockpit() {
                   </button>
                 </div>
               </div>
+
+              <AnimatePresence initial={false}>
+                {undoCompletion && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-[var(--success)]/25 bg-[var(--success)]/10 px-3 py-2 text-xs"
+                  >
+                    <span className="min-w-0 truncate">
+                      Checked off {undoCompletion.title}
+                    </span>
+                    <button
+                      onClick={undoLastCompletion}
+                      className="inline-flex items-center gap-1 rounded-md bg-[var(--surface)] border border-[var(--border)] px-2 py-1 hover:bg-[var(--border)]"
+                    >
+                      <Undo2 size={12} />
+                      Undo
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {dayFilter === "needed" && scheduleContextItems.length > 0 && (
+                <div className="mb-2 rounded-lg border border-[var(--border)] bg-[var(--surface)]/70 p-2">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-semibold">
+                      Schedule context
+                    </p>
+                    <button
+                      onClick={() => setWorkspaceMode("schedule")}
+                      className="hidden lg:inline text-[10px] text-[var(--muted)] hover:text-[var(--foreground)]"
+                    >
+                      open timeline
+                    </button>
+                  </div>
+                  <div className="grid gap-1 sm:grid-cols-2">
+                    {scheduleContextItems.map((item) => (
+                      <div
+                        key={`${item.kind}-${item.id}`}
+                        className="grid grid-cols-[52px_minmax(0,1fr)] gap-2 text-xs items-center"
+                      >
+                        <span className="font-mono text-[var(--muted)]">
+                          {prettyTime(item.time).replace(" ", "")}
+                        </span>
+                        <span className="truncate">{item.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex-1 min-h-0 overflow-y-auto scroll-hidden space-y-1.5 pr-1">
                 <AnimatePresence initial={false}>
@@ -1014,6 +1785,19 @@ export function DayCockpit() {
                 )}
               </div>
             </div>
+            ) : (
+              <DayTimeline
+                selectedDate={selectedDate}
+                timedItems={timedItems}
+                unscheduledItems={unscheduledItems}
+                onToggle={toggleItem}
+                onDelete={deleteItem}
+                onScheduleTask={scheduleTask}
+                onUpdateTask={updateTodo}
+                onUpdateEvent={updateEvent}
+                onAddTask={addTimelineTask}
+              />
+            )}
           </main>
 
           <section
@@ -1021,7 +1805,17 @@ export function DayCockpit() {
               mobileTab === "schedule" ? "flex" : "hidden"
             } lg:hidden`}
           >
-            <SchedulePreview timedItems={timedItems} />
+            <DayTimeline
+              selectedDate={selectedDate}
+              timedItems={timedItems}
+              unscheduledItems={unscheduledItems}
+              onToggle={toggleItem}
+              onDelete={deleteItem}
+              onScheduleTask={scheduleTask}
+              onUpdateTask={updateTodo}
+              onUpdateEvent={updateEvent}
+              onAddTask={addTimelineTask}
+            />
           </section>
 
           <aside
